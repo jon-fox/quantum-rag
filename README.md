@@ -12,13 +12,14 @@
 
 ## Project Objective
 
-This graduate independent study project investigates whether quantum computing techniques can enhance document reranking in Retrieval-Augmented Generation (RAG) systems. Specifically, we're developing a hybrid quantum-classical architecture that leverages quantum circuit-based similarity functions to improve context selection for energy forecast analysis using ERCOT data.
+This graduate independent study project investigates whether a quantum-enhanced reranking component can improve Retrieval-Augmented Generation (RAG) systems. The research maintains a classical RAG pipeline while replacing only the reranking mechanism with a quantum alternative to evaluate its effectiveness for energy forecast analysis using ERCOT data.
 
 The research focuses on:
-- Implementing quantum state encoding for documents and queries
-- Comparing quantum similarity measures against classical methods
-- Building an agent-based controller to optimize the reranking process
-- Evaluating performance across multiple LLM backends
+- Developing a quantum circuit-based reranker within a primarily classical RAG pipeline
+- Encoding documents and queries into quantum states for similarity comparison
+- Comparing classical vs. quantum reranking approaches with identical retrieval and generation components
+- Building an agent-based controller to intelligently select between classical or quantum reranking based on query characteristics
+- Evaluating end-to-end performance across multiple LLM backends
 
-This work explores the intersection of quantum information theory and natural language processing, with potential applications in energy system forecasting and operational analysis.
+This work explores the targeted application of quantum computation to a specific NLP pipeline component, with potential applications in energy system forecasting and operational analysis.
 
