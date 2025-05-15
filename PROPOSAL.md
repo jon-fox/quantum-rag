@@ -100,6 +100,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Contact
 
-- **Project Lead**: Your Name
-- **Email**: your.email@example.com
-- **GitHub**: [@yourusername](https://github.com/yourusername)
+- **Project Lead**: Jonathan Fox
+- **Email**: foxj7@nku.edu
+- **GitHub**: [@jon-fox](https://github.com/jon-fox)
