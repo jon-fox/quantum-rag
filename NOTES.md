@@ -8,3 +8,9 @@ echo 'export PYTHONPATH=/mnt/c/Developer_Workspace/quantum_work:$PYTHONPATH' >> 
 python app/main.py
 
 http://127.0.0.1:8000/docs#
+
+# scan imports and see what dependencies
+pipreqs /mnt/c/Developer_Workspace/quantum_work --force
+
+# clean py env
+python -m venv venv --clear

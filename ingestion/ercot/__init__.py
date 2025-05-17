@@ -1,3 +1,0 @@
-"""
-ERCOT Data Components
-"""

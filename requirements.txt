@@ -1,49 +1,18 @@
-# RAG Energy App with Quantum Reranking Dependencies
-
-# Core dependencies
-fastapi>=0.100.0
-uvicorn>=0.22.0
-pydantic>=2.0.0
-python-dotenv>=1.0.0
-httpx>=0.24.1
-numpy>=1.24.0
-
-# Vector search and embeddings
-sentence-transformers>=2.2.2
-faiss-cpu>=1.7.4
-scikit-learn>=1.2.0
-
-# Quantum libraries
-qiskit>=0.44.0
-qiskit-algorithms>=0.2.0
-
-# LLM integration
-openai>=1.0.0
-tiktoken>=0.5.0
-tenacity>=8.2.2
-
-# LangChain integration
-langchain==0.3.25
-langchain-community==0.3.24
-langchain-openai==0.3.17
-langchain-huggingface==0.2.0
-
-# Data processing
-pandas>=2.0.0
-pyarrow>=13.0.0
-pdfplumber>=0.10.0
-
-# Testing and development
-pytest>=7.3.1
-pytest-asyncio>=0.21.0
-black>=23.3.0
-isort>=5.12.0
-
-# Task scheduling (optional)
-celery>=5.3.1
-redis>=4.6.0
-
-# Database (optional)
-sqlalchemy>=2.0.0
-alembic>=1.11.1
-psycopg2-binary>=2.9.6
+# Quantum RAG Energy Forecasting Requirements
+fastapi
+numpy
+openai
+pydantic
+python-dotenv
+qiskit
+requests
+sentence_transformers
+uvicorn
+pandas
+scikit-learn
+matplotlib
+# ERCOT Data Dependencies
+plotly
+tqdm
+torch
+transformers

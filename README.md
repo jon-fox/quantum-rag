@@ -9,6 +9,7 @@
 | Qiskit (Quantum SDK) | https://github.com/Qiskit/qiskit |
 | Project Discussion | https://chatgpt.com/c/68254a64-f578-8001-b942-33e437225165 |
 | Original Proposal | https://docs.google.com/document/d/19WuIULxvqFG6xaQ2Sa7sYMlx8o4hZBwX4khceGAqRag/edit?tab=t.0 |
+| Atomic Agents | https://github.com/BrainBlend-AI/atomic-agents |
 
 ## Project Objective
 
@@ -20,6 +21,30 @@ The research focuses on:
 - Comparing classical vs. quantum reranking approaches with identical retrieval and generation components
 - Building an agent-based controller to intelligently select between classical or quantum reranking based on query characteristics
 - Evaluating end-to-end performance across multiple LLM backends
+
+## API Endpoints
+
+The project provides a focused API for energy data analysis:
+
+- `POST /api/energy/query`: Query ERCOT energy data using either classical, quantum, or automatic reranking selection
+- `GET /api/energy/health`: Simple health check endpoint
+
+## Getting Started
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/quantum-rag.git
+cd quantum-rag
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the API server
+uvicorn app:app --reload
+
+# Access API documentation
+# Open http://localhost:8000/docs in your browser
+```
 
 This work explores the targeted application of quantum computation to a specific NLP pipeline component, with potential applications in energy system forecasting and operational analysis.
 
