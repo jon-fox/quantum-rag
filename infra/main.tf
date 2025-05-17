@@ -8,64 +8,62 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      # version = "~> 4.0"
     }
     random = {
       source  = "hashicorp/random"
-      # version = "~> 3.0"
     }
   }
   
   backend "s3" {
-    key    = "terraform/watch_arb/terraform.tfstate"  # Path inside the bucket to store the state
-    region = "us-east-1"  # AWS region, e.g., us-west-2
+    key    = "terraform/quantum_rag/terraform.tfstate"  # Path inside the bucket to store the state
+    region = "us-east-1"  # AWS region
   }
 }
 
-resource "aws_dynamodb_table" "ebay_watch_listings" {
-  name           = "ebay_watch_listings"
+resource "aws_dynamodb_table" "quantum_embeddings" {
+  name           = "quantum_embeddings"
   billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "item_id"
+  hash_key       = "document_id"
 
   # Primary key attribute
   attribute {
-    name = "item_id"
+    name = "document_id"
     type = "S"
   }
   
-  # Price attribute for GSI
+  # Document type attribute for GSI (energy, forecast, analysis)
   attribute {
-    name = "price"
-    type = "N"
+    name = "doc_type"
+    type = "S"
   }
   
-  # Last updated attribute for GSI - more reliable than creation_date which may be missing
+  # Last updated timestamp for freshness tracking
   attribute {
     name = "last_updated"
     type = "S"
   }
 
-  # Price-based GSI for finding deals within price ranges
+  # Document type GSI for querying by type (energy data, forecast, analysis)
   global_secondary_index {
-    name               = "PriceIndex"
-    hash_key           = "price"
+    name               = "DocTypeIndex"
+    hash_key           = "doc_type"
     projection_type    = "INCLUDE"
-    non_key_attributes = ["title", "item_url", "image_url", "condition", "seller_username"]
+    non_key_attributes = ["title", "source", "vector_id", "embedding_type", "summary"]
   }
   
-  # Date-based GSI for finding recent listings - using last_updated which will always exist
+  # Date-based GSI for finding recent documents
   global_secondary_index {
     name               = "DateIndex"
     hash_key           = "last_updated"
     projection_type    = "INCLUDE"
-    non_key_attributes = ["title", "price", "item_url", "image_url", "item_id"]
+    non_key_attributes = ["document_id", "title", "source", "doc_type", "vector_id"]
   }
   
-  # TTL is optional but configured for future use if needed
-#   ttl {
-#     attribute_name = "expiry_time"
-#     enabled        = true
-#   }
+  # TTL for document expiration
+  ttl {
+    attribute_name = "expiry_time"
+    enabled        = true
+  }
   
   # Enable point-in-time recovery for data protection
   point_in_time_recovery {
@@ -73,11 +71,23 @@ resource "aws_dynamodb_table" "ebay_watch_listings" {
   }
 
   tags = {
-    Name        = "ebay_watch_listings"
+    Name        = "quantum_embeddings"
     Environment = var.environment
-    Project     = "watch-arbitrage"
+    Project     = "quantum-rag"
     ManagedBy   = "terraform"
-    Purpose     = "watch-deal-analysis"
-    CreatedDate = "2025-05-06"
+    Purpose     = "semantic-reranking"
+    CreatedDate = "2025-05-17"
   }
+}
+
+# Output the DynamoDB table name
+output "dynamodb_table_name" {
+  value       = aws_dynamodb_table.quantum_embeddings.name
+  description = "Name of the DynamoDB table for quantum embeddings"
+}
+
+# Output the DynamoDB table ARN
+output "dynamodb_table_arn" {
+  value       = aws_dynamodb_table.quantum_embeddings.arn
+  description = "ARN of the DynamoDB table for quantum embeddings"
 }

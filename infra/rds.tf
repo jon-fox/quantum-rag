@@ -29,17 +29,21 @@ resource "aws_security_group" "rds_sg" {
   }
 
   tags = {
-    Name = "watch-arb-rds-sg"
+    Name        = "quantum-rag-rds-sg"
+    Environment = var.environment
+    Project     = "quantum-rag"
   }
 }
 
 # Create a subnet group for the RDS instance
 resource "aws_db_subnet_group" "rds_subnet_group" {
-  name       = "watch-arb-rds-subnet-group"
+  name       = "quantum-rag-rds-subnet-group"
   subnet_ids = var.database_subnet_ids
 
   tags = {
-    Name = "watch-arb-rds-subnet-group"
+    Name        = "quantum-rag-rds-subnet-group"
+    Environment = var.environment
+    Project     = "quantum-rag"
   }
 }
 
@@ -59,8 +63,8 @@ resource "aws_db_parameter_group" "postgres_pgvector" {
 }
 
 # Create the RDS instance with PostgreSQL and pgvector
-resource "aws_db_instance" "watch_arb_db" {
-  identifier             = "watch-arb-db"
+resource "aws_db_instance" "quantum_rag_db" {
+  identifier             = "quantum-rag-db"
   engine                 = "postgres"
   engine_version         = "17.2"  # Use a version that supports pgvector
   instance_class         = "db.t3.small"
@@ -69,8 +73,8 @@ resource "aws_db_instance" "watch_arb_db" {
   storage_type           = "gp2"
   storage_encrypted      = true
   
-  db_name                = "watch_arb"
-  username               = "watchadmin"
+  db_name                = "quantum_rag"
+  username               = "quantumadmin"
   password               = random_password.db_password.result
   
   parameter_group_name   = aws_db_parameter_group.postgres_pgvector.name
@@ -82,7 +86,7 @@ resource "aws_db_instance" "watch_arb_db" {
   publicly_accessible    = true
   
   skip_final_snapshot    = true  # Set to false for production
-  final_snapshot_identifier = "watch-arb-db-final-snapshot"
+  final_snapshot_identifier = "quantum-rag-db-final-snapshot"
   deletion_protection    = false  # Set to true for production
   backup_retention_period = 7
   backup_window          = "03:00-04:00"
@@ -92,97 +96,100 @@ resource "aws_db_instance" "watch_arb_db" {
   auto_minor_version_upgrade = true
   
   tags = {
-    Name        = "watch-arb-db"
+    Name        = "quantum-rag-db"
     Environment = var.environment
-    Project     = "watch-arb"
+    Project     = "quantum-rag"
+    Purpose     = "vector-embeddings"
+    ManagedBy   = "terraform"
+    CreatedDate = "2025-05-17"
   }
 }
 
 # Store RDS connection details in SSM Parameter Store
 resource "aws_ssm_parameter" "db_endpoint" {
-  name        = "/${var.environment}/watch-arb/db/endpoint"
+  name        = "/${var.environment}/quantum-rag/db/endpoint"
   description = "RDS instance endpoint"
   type        = "String"
-  value       = aws_db_instance.watch_arb_db.endpoint
+  value       = aws_db_instance.quantum_rag_db.endpoint
   tags = {
     Environment = var.environment
-    Project     = "watch-arb"
+    Project     = "quantum-rag"
   }
 }
 
 resource "aws_ssm_parameter" "db_address" {
-  name        = "/${var.environment}/watch-arb/db/address"
+  name        = "/${var.environment}/quantum-rag/db/address"
   description = "RDS instance address"
   type        = "String"
-  value       = aws_db_instance.watch_arb_db.address
+  value       = aws_db_instance.quantum_rag_db.address
   tags = {
     Environment = var.environment
-    Project     = "watch-arb"
+    Project     = "quantum-rag"
   }
 }
 
 resource "aws_ssm_parameter" "db_port" {
-  name        = "/${var.environment}/watch-arb/db/port"
+  name        = "/${var.environment}/quantum-rag/db/port"
   description = "RDS instance port"
   type        = "String"
-  value       = aws_db_instance.watch_arb_db.port
+  value       = aws_db_instance.quantum_rag_db.port
   tags = {
     Environment = var.environment
-    Project     = "watch-arb"
+    Project     = "quantum-rag"
   }
 }
 
 resource "aws_ssm_parameter" "db_name" {
-  name        = "/${var.environment}/watch-arb/db/name"
+  name        = "/${var.environment}/quantum-rag/db/name"
   description = "RDS database name"
   type        = "String"
-  value       = "watch_arb"
+  value       = "quantum_rag"
   tags = {
     Environment = var.environment
-    Project     = "watch-arb"
+    Project     = "quantum-rag"
   }
 }
 
 resource "aws_ssm_parameter" "db_username" {
-  name        = "/${var.environment}/watch-arb/db/username"
+  name        = "/${var.environment}/quantum-rag/db/username"
   description = "RDS username"
   type        = "String"
-  value       = "watchadmin"
+  value       = "quantumadmin"
   tags = {
     Environment = var.environment
-    Project     = "watch-arb"
+    Project     = "quantum-rag"
   }
 }
 
 resource "aws_ssm_parameter" "db_password" {
-  name        = "/${var.environment}/watch-arb/db/password"
+  name        = "/${var.environment}/quantum-rag/db/password"
   description = "RDS password"
   type        = "SecureString"
   value       = random_password.db_password.result
   tags = {
     Environment = var.environment
-    Project     = "watch-arb"
+    Project     = "quantum-rag"
   }
 }
 
 # Output the RDS endpoint
 output "rds_endpoint" {
-  value = aws_db_instance.watch_arb_db.endpoint
+  value = aws_db_instance.quantum_rag_db.endpoint
   description = "The endpoint of the RDS instance"
 }
 
 output "rds_address" {
-  value = aws_db_instance.watch_arb_db.address
+  value = aws_db_instance.quantum_rag_db.address
   description = "The hostname of the RDS instance"
 }
 
 output "rds_port" {
-  value = aws_db_instance.watch_arb_db.port
+  value = aws_db_instance.quantum_rag_db.port
   description = "The port of the RDS instance"
 }
 
 # Add note about pgvector extension installation
 output "pgvector_setup_note" {
-  value = "After the RDS instance is created, connect to it and run: CREATE EXTENSION IF NOT EXISTS vector;"
-  description = "Note about setting up pgvector extension manually"
+  value = "After the RDS instance is created, connect to it and run: CREATE EXTENSION IF NOT EXISTS vector; -- This is needed for storing quantum state vector embeddings"
+  description = "Note about setting up pgvector extension for quantum embeddings"
 }
