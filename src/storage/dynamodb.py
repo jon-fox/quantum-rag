@@ -14,7 +14,7 @@ logging.basicConfig(
 )
 
 class DynamoDBStorage:
-    """Class for handling eBay listings storage in DynamoDB"""
+    """Class for handling energy consumption data storage in DynamoDB"""
     
     def __init__(
         self,
@@ -30,7 +30,7 @@ class DynamoDBStorage:
             region: AWS region, defaults to env var or boto default
             endpoint_url: Custom endpoint for local DynamoDB testing
         """
-        self.table_name = table_name or os.environ.get("DYNAMODB_TABLE", "ebay_watch_listings")
+        self.table_name = table_name or os.environ.get("DYNAMODB_TABLE", "energy_consumption_data")
         self.region = region or os.environ.get("AWS_REGION", "us-east-1")
         self.endpoint_url = endpoint_url
         
@@ -51,12 +51,12 @@ class DynamoDBStorage:
             logger.error(f"Failed to initialize DynamoDB: {e}")
             raise
     
-    def store_listing(self, item: Dict[str, Any], condition_expression: str = None) -> Dict[str, Any]:
+    def store_energy_data(self, item: Dict[str, Any], condition_expression: str = None) -> Dict[str, Any]:
         """
-        Store a single eBay listing in DynamoDB
+        Store a single energy consumption data point in DynamoDB
         
         Args:
-            item: eBay item data
+            item: Energy consumption data
             condition_expression: Optional DynamoDB condition expression
             
         Returns:
@@ -64,30 +64,37 @@ class DynamoDBStorage:
         """
         try:
             # Extract required fields with validation
-            item_id = item.get("itemId")
+            item_id = item.get("dataId")
             if not item_id:
-                logger.error("Missing required field: itemId")
-                return {"success": False, "error": "Missing required field: itemId"}
+                logger.error("Missing required field: dataId")
+                return {"success": False, "error": "Missing required field: dataId"}
             
             # Prepare DynamoDB item with all possible fields
             db_item = {
                 "item_id": item_id,
-                "title": item.get("title", "Unknown"),
+                "description": item.get("description", "Unknown"),
                 "last_updated": self._get_timestamp(),
             }
             
-            # Handle price with proper validation
-            price_data = item.get("price", {})
-            if price_data and isinstance(price_data, dict):
-                price_value = price_data.get("value")
-                if price_value:
+            # Handle efficiency with proper validation
+            efficiency_data = item.get("efficiency", {})
+            if efficiency_data and isinstance(efficiency_data, dict):
+                efficiency_value = efficiency_data.get("value")
+                if efficiency_value:
                     try:
-                        db_item["price"] = Decimal(str(price_value))
-                        db_item["currency"] = price_data.get("currency", "USD")
+                        db_item["efficiency"] = Decimal(str(efficiency_value))
+                        db_item["unit"] = efficiency_data.get("unit", "kWh")
                     except (ValueError, TypeError) as e:
-                        logger.warning(f"Invalid price value for item {item_id}: {e}")
+                        logger.warning(f"Invalid efficiency value for item {item_id}: {e}")
                         # Use 0 as fallback
-                        db_item["price"] = Decimal('0')
+                        db_item["efficiency"] = Decimal('0')
+            elif isinstance(item.get("efficiency"), (int, float)):
+                try:
+                    db_item["efficiency"] = Decimal(str(item["efficiency"]))
+                    db_item["unit"] = "kWh"  # Default unit
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Invalid efficiency value for item {item_id}: {e}")
+                    db_item["efficiency"] = Decimal('0')
             
             # Add all optional fields with type handling
             self._add_optional_field(db_item, item, "condition")
@@ -165,12 +172,12 @@ class DynamoDBStorage:
             logger.error(f"Failed to store item {item.get('itemId', 'unknown')}: {str(e)}")
             return {"success": False, "item_id": item.get("itemId"), "error": str(e)}
     
-    def batch_store_listings(self, items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def batch_store_energy_data(self, items: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Store multiple eBay listings in batches
+        Store multiple energy data items in batches
         
         Args:
-            items: List of eBay item data
+            items: List of energy data items
             
         Returns:
             Dict with results summary

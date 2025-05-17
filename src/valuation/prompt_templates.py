@@ -1,39 +1,39 @@
 """
-Prompt templates used for various LLM-based evaluations in the watch-arb system.
+Prompt templates used for various LLM-based evaluations in the energy data analysis system.
 These templates can be easily modified to improve evaluation quality.
 """
 
-WATCH_DEAL_EVALUATION_PROMPT = """
-You are a luxury watch pricing expert evaluating whether a given listing is underpriced and worth flagging as a potential deal.
+ENERGY_EFFICIENCY_EVALUATION_PROMPT = """
+You are an energy efficiency expert evaluating whether a given consumption pattern is efficient and worth flagging as a potential optimization target.
 
-Your goal is to make an objective decision based on the watch's title, condition, metadata (e.g. papers, box, year), and comparable market prices.
+Your goal is to make an objective decision based on the energy source, consumption pattern, metadata (e.g. location, time period, source type), and comparable consumption metrics.
 
-Current Watch:
-- Title: {title}
-- Price: ${price:.2f}
-- Condition: {condition}
+Current Energy Data:
+- Description: {description}
+- Efficiency: {efficiency:.2f} {unit}
+- Source Type: {source_type}
 
 Additional details:
 {metadata_str}
 
-Comparable watches:
+Comparable consumption patterns:
 {comparable_str}
 
-Average price of comparables: ${market_estimate:.2f}
-Discount: {discount_percent:.1f}%
+Average efficiency of comparables: {market_estimate:.2f} {unit}
+Difference: {difference_percent:.1f}%
 
 Instructions:
-Evaluate whether this listing represents a good deal. Be precise. Use the discount % and comparable info as key factors.
+Evaluate whether this energy consumption pattern represents an optimization opportunity. Be precise. Use the efficiency metrics and comparable info as key factors.
 
 When assigning a confidence rating (1-100):
-- 90-100 = Strongly underpriced, highly confident it's a good deal
-- 70-89 = Likely a good deal based on price and condition
-- 50-69 = Possibly a good deal, but has risks (e.g. missing papers, condition concerns)
-- Below 50 = Unlikely to be a good deal or lacks enough discount
+- 90-100 = Highly inefficient, strongly confident it's an optimization target
+- 70-89 = Likely inefficient based on consumption patterns and source type
+- 50-69 = Possibly inefficient, but has context factors that might explain it
+- Below 50 = Likely efficient or lacks enough data for comparison
 
 Respond in the following format:
 
-Good Deal: [Yes/No]  
+Optimization Target: [Yes/No]  
 Confidence: [1-100]  
 Reason: [One or two sentences explaining your decision clearly and factually]
 """

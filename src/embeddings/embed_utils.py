@@ -1,6 +1,6 @@
 """
 Embedding utilities for generating, storing, and searching vector embeddings
-of watch descriptions and prices for semantic search.
+of energy consumption data and efficiency metrics for semantic search.
 
 Supports both OpenAI embeddings and SentenceTransformers.
 """
@@ -225,39 +225,39 @@ def get_embedding_provider(provider_type: str = None) -> EmbeddingProvider:
         raise ValueError(f"Unknown embedding provider type: {provider_type}")
 
 
-def create_watch_embedding_text(item: Dict[str, Any]) -> str:
-    """Create a combined text representation of watch details for embedding
+def create_energy_embedding_text(item: Dict[str, Any]) -> str:
+    """Create a combined text representation of energy data details for embedding
     
     Args:
-        item: Dictionary containing watch details
+        item: Dictionary containing energy data details
         
     Returns:
-        String combining relevant watch details
+        String combining relevant energy data details
     """
     # Extract fields with fallbacks to empty strings
-    brand = item.get("brand", "").strip()
-    model = item.get("model", "").strip()
-    reference = item.get("reference", "").strip()
+    source_type = item.get("source_type", "").strip()
+    location = item.get("location", "").strip()
+    meter_id = item.get("meter_id", "").strip()
     description = item.get("description", "").strip()
-    condition = item.get("condition", "").strip()
+    period = item.get("period", "").strip()
     year = item.get("year", "").strip()
     
     # Combine fields with importance weighting (repeat important fields)
     text_parts = []
     
-    # Brand and model are most important - repeat them
-    if brand:
-        text_parts.extend([brand] * 3)
-    if model:
-        text_parts.extend([model] * 3)
-    if reference:
-        text_parts.extend([reference] * 2)
+    # Source type and location are most important - repeat them
+    if source_type:
+        text_parts.extend([source_type] * 3)
+    if location:
+        text_parts.extend([location] * 3)
+    if meter_id:
+        text_parts.extend([meter_id] * 2)
         
-    # Add year and condition once
+    # Add year and period once
     if year:
         text_parts.append(f"Year {year}")
-    if condition:
-        text_parts.append(f"Condition: {condition}")
+    if period:
+        text_parts.append(f"Period: {period}")
         
     # Add full description at the end
     if description:
@@ -267,14 +267,14 @@ def create_watch_embedding_text(item: Dict[str, Any]) -> str:
     return " ".join(text_parts)
 
 
-def embed_watch_items(
+def embed_energy_data_items(
     items: List[Dict[str, Any]], 
     provider: Optional[EmbeddingProvider] = None
 ) -> Tuple[List[Dict[str, Any]], np.ndarray]:
-    """Generate embeddings for a list of watch items
+    """Generate embeddings for a list of energy data items
     
     Args:
-        items: List of dictionaries containing watch details
+        items: List of dictionaries containing energy data details
         provider: EmbeddingProvider to use (if None, one will be created)
         
     Returns:
@@ -284,11 +284,11 @@ def embed_watch_items(
     if provider is None:
         provider = get_embedding_provider()
     
-    # Create text representations for each watch
+    # Create text representations for each energy data entry
     texts = []
     for item in items:
         # Add the embedding text to each item
-        item["embedding_text"] = create_watch_embedding_text(item)
+        item["embedding_text"] = create_energy_embedding_text(item)
         texts.append(item["embedding_text"])
     
     # Generate embeddings
@@ -310,19 +310,19 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
 
-def find_similar_watches(
+def find_similar_energy_data(
     query_embedding: np.ndarray,
     all_embeddings: np.ndarray,
     all_items: List[Dict[str, Any]],
     top_k: int = 5,
     min_similarity: float = 0.7
 ) -> List[Dict[str, Any]]:
-    """Find watches similar to the query embedding
+    """Find energy data similar to the query embedding
     
     Args:
         query_embedding: Embedding of the query
-        all_embeddings: Array of embeddings for all watches
-        all_items: List of watch items corresponding to all_embeddings
+        all_embeddings: Array of embeddings for all energy data points
+        all_items: List of energy data items corresponding to all_embeddings
         top_k: Number of results to return
         min_similarity: Minimum similarity score to include in results
         
@@ -374,22 +374,22 @@ def embed_query(
     return embeddings[0]
 
 
-def price_aware_embedding(
+def efficiency_aware_embedding(
     description: str,
-    price: float,
+    efficiency: float,
     provider: Optional[EmbeddingProvider] = None,
-    price_weight: float = 0.2
+    efficiency_weight: float = 0.2
 ) -> np.ndarray:
-    """Generate a specialized embedding that includes price awareness
+    """Generate a specialized embedding that includes energy efficiency awareness
     
-    This combines a normal text embedding with price information
-    to allow semantic search that's aware of price ranges.
+    This combines a normal text embedding with efficiency information
+    to allow semantic search that's aware of efficiency ranges.
     
     Args:
-        description: Text description of the watch
-        price: Price of the watch
+        description: Text description of the energy data
+        efficiency: Efficiency metric of the energy source
         provider: EmbeddingProvider to use (if None, one will be created)
-        price_weight: Weight to give the price factor (0-1)
+        efficiency_weight: Weight to give the efficiency factor (0-1)
         
     Returns:
         Modified embedding vector
@@ -401,12 +401,12 @@ def price_aware_embedding(
     # Generate normal embedding
     text_embedding = provider.get_embeddings([description])[0]
     
-    # Create a price-aware prefix
-    price_context = f"This watch costs ${price:.2f}. "
-    price_embedding = provider.get_embeddings([price_context + description])[0]
+    # Create an efficiency-aware prefix
+    efficiency_context = f"This energy source has efficiency rating of {efficiency:.2f}. "
+    efficiency_embedding = provider.get_embeddings([efficiency_context + description])[0]
     
     # Combine embeddings with weighting
-    combined_embedding = (1 - price_weight) * text_embedding + price_weight * price_embedding
+    combined_embedding = (1 - efficiency_weight) * text_embedding + efficiency_weight * efficiency_embedding
     
     # Normalize the result
     combined_embedding /= np.linalg.norm(combined_embedding)
@@ -422,7 +422,7 @@ def save_embeddings(
     """Save embeddings and items to a file
     
     Args:
-        items: List of watch item dictionaries
+        items: List of energy data dictionaries
         embeddings: Array of embeddings
         filename: Path to save the file
     """

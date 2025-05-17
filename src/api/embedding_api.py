@@ -1,5 +1,5 @@
 """
-Embedding API endpoints for semantic search of watch descriptions and prices.
+Embedding API endpoints for semantic search of energy consumption data and efficiency metrics.
 """
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -13,8 +13,8 @@ from src.embeddings.embed_utils import (
     get_embedding_provider,
     OpenAIEmbedding,  # Import OpenAI embedding provider explicitly
     embed_query,
-    price_aware_embedding,
-    find_similar_watches,
+    efficiency_aware_embedding,
+    find_similar_energy_data,
     load_embeddings
 )
 
@@ -27,9 +27,9 @@ class SearchQuery(BaseModel):
     query: str
     top_k: int = 5
     min_similarity: float = 0.6
-    price_aware: bool = False
-    min_price: Optional[float] = None
-    max_price: Optional[float] = None
+    efficiency_aware: bool = False
+    min_efficiency: Optional[float] = None
+    max_efficiency: Optional[float] = None
 
 
 class EmbeddingResponse(BaseModel):
@@ -99,14 +99,14 @@ def create_embedding_router() -> APIRouter:
             "model": default_model
         }
     
-    @router.post("/price-aware", response_model=EmbeddingResponse)
-    async def create_price_aware_embedding(
-        description: str = Query(..., description="Watch description"),
-        price: float = Query(..., description="Watch price"),
-        weight: float = Query(0.2, description="Price weight factor (0-1)")
+    @router.post("/efficiency-aware", response_model=EmbeddingResponse)
+    async def create_efficiency_aware_embedding(
+        description: str = Query(..., description="Energy data description"),
+        efficiency: float = Query(..., description="Energy efficiency metric"),
+        weight: float = Query(0.2, description="Efficiency weight factor (0-1)")
     ):
-        """Generate a price-aware embedding"""
-        embedding = price_aware_embedding(description, price, default_provider, price_weight=weight)
+        """Generate an efficiency-aware embedding"""
+        embedding = efficiency_aware_embedding(description, efficiency, default_provider, efficiency_weight=weight)
         
         return {
             "vector": embedding.tolist(),
@@ -117,20 +117,20 @@ def create_embedding_router() -> APIRouter:
     @router.post("/search", response_model=SearchResponse)
     async def search_embeddings(search_request: SearchQuery):
         """
-        Search for similar watches using embeddings
+        Search for similar energy data using embeddings
         
         This endpoint first loads embeddings from the specified source file,
         then performs semantic search based on the query.
         """
         # Determine which embedding file to use - prefer OpenAI embeddings if available
-        embedding_file = "openai_watch_embeddings.json"  # Try to use OpenAI embeddings first
+        embedding_file = "openai_energy_embeddings.json"  # Try to use OpenAI embeddings first
         
         # Construct full path
         embedding_path = EMBEDDINGS_PATH / embedding_file
         
         # If OpenAI embeddings don't exist, fall back to default embeddings
         if not embedding_path.exists():
-            embedding_file = "watch_embeddings.json"
+            embedding_file = "energy_embeddings.json"
             embedding_path = EMBEDDINGS_PATH / embedding_file
         
         # Load embeddings if not already in memory
@@ -140,11 +140,11 @@ def create_embedding_router() -> APIRouter:
                 _loaded_embeddings[embedding_file] = (items, embeddings)
             except (FileNotFoundError, json.JSONDecodeError) as e:
                 # If we can't load embeddings, use the demo data from example script
-                from src.scripts.example_embedding import SAMPLE_WATCHES
-                from src.embeddings.embed_utils import embed_watch_items
+                from src.scripts.example_embedding import SAMPLE_ENERGY_DATA
+                from src.embeddings.embed_utils import embed_energy_data_items
                 
                 # Use OpenAI for embedding generation
-                items, embeddings = embed_watch_items(SAMPLE_WATCHES, default_provider)
+                items, embeddings = embed_energy_data_items(SAMPLE_ENERGY_DATA, default_provider)
                 _loaded_embeddings[embedding_file] = (items, embeddings)
         else:
             items, embeddings = _loaded_embeddings[embedding_file]
@@ -152,16 +152,16 @@ def create_embedding_router() -> APIRouter:
         # Generate embedding for the query
         query_embedding = embed_query(search_request.query, default_provider)
         
-        # Apply price filtering if needed
+        # Apply efficiency filtering if needed
         filtered_items = []
         filtered_embeddings = []
         
         for idx, item in enumerate(items):
-            # Apply price filters if specified
-            price = item.get('price', 0)
-            if search_request.min_price is not None and price < search_request.min_price:
+            # Apply efficiency filters if specified
+            efficiency = item.get('efficiency', 0)
+            if search_request.min_efficiency is not None and efficiency < search_request.min_efficiency:
                 continue
-            if search_request.max_price is not None and price > search_request.max_price:
+            if search_request.max_efficiency is not None and efficiency > search_request.max_efficiency:
                 continue
             
             filtered_items.append(item)
@@ -175,12 +175,12 @@ def create_embedding_router() -> APIRouter:
                 "query": search_request.query,
                 "results": [],
                 "count": 0,
-                "embedding_type": "text" if not search_request.price_aware else "price_aware",
+                "embedding_type": "text" if not search_request.efficiency_aware else "efficiency_aware",
                 "model": default_model
             }
         
-        # Find similar watches
-        search_results = find_similar_watches(
+        # Find similar energy data
+        search_results = find_similar_energy_data(
             query_embedding=query_embedding,
             all_embeddings=filtered_embeddings,
             all_items=filtered_items,
@@ -192,7 +192,7 @@ def create_embedding_router() -> APIRouter:
             "query": search_request.query,
             "results": search_results,
             "count": len(search_results),
-            "embedding_type": "text" if not search_request.price_aware else "price_aware",
+            "embedding_type": "text" if not search_request.efficiency_aware else "efficiency_aware",
             "model": default_model
         }
     

@@ -1,5 +1,5 @@
 """
-Dual storage module for storing eBay watch listings in both DynamoDB and PostgreSQL.
+Dual storage module for storing energy consumption data in both DynamoDB and PostgreSQL.
 The PostgreSQL database uses pgvector extension to store and query vector embeddings.
 """
 import json
@@ -26,7 +26,7 @@ logging.basicConfig(
 
 class DualStorage:
     """
-    Class for storing eBay watch listings in both DynamoDB and PostgreSQL with pgvector.
+    Class for storing energy consumption data in both DynamoDB and PostgreSQL with pgvector.
     
     Utilizes AWS SSM Parameter Store to retrieve database credentials and connection info.
     """
@@ -34,7 +34,7 @@ class DualStorage:
     def __init__(
         self,
         dynamodb_table_name: str = None,
-        postgres_table_name: str = "watch_embeddings",
+        postgres_table_name: str = "energy_embeddings",
         region: str = None,
         environment: str = None,
         ssm_param_prefix: str = None,
@@ -54,7 +54,7 @@ class DualStorage:
         # Initialize attributes
         self.region = region or os.environ.get("AWS_REGION", "us-east-1")
         self.environment = environment or os.environ.get("ENVIRONMENT", "prod")
-        self.ssm_param_prefix = ssm_param_prefix or f"/{self.environment}/watch-arb/db"
+        self.ssm_param_prefix = ssm_param_prefix or f"/{self.environment}/energy-data/db"
         self.postgres_table_name = postgres_table_name
         self.schema_initialized = False
         
@@ -101,7 +101,7 @@ class DualStorage:
                     logger.warning(f"Failed to get parameter {param_name}: {e}")
                     # Use defaults if parameter not found
                     if param_name == "username":
-                        params[param_name] = "watchadmin"
+                        params[param_name] = "energyadmin"
                     elif param_name == "password":
                         params[param_name] = os.environ.get("DB_PASSWORD", "")
                     elif param_name == "address":
@@ -109,15 +109,15 @@ class DualStorage:
                     elif param_name == "port":
                         params[param_name] = os.environ.get("DB_PORT", "5432")
                     elif param_name == "name":
-                        params[param_name] = os.environ.get("DB_NAME", "watch_arb")
+                        params[param_name] = os.environ.get("DB_NAME", "energy_data")
             
             # Cache the parameters for future use
             self.pg_params = {
-                "user": params.get("username", "watchadmin"),
+                "user": params.get("username", "energyadmin"),
                 "password": params.get("password", os.environ.get("DB_PASSWORD", "")),
                 "host": params.get("address", os.environ.get("DB_HOST", "localhost")),
                 "port": params.get("port", os.environ.get("DB_PORT", "5432")),
-                "dbname": params.get("name", os.environ.get("DB_NAME", "watch_arb"))
+                "dbname": params.get("name", os.environ.get("DB_NAME", "energy_data"))
             }
             
             return self.pg_params
@@ -126,11 +126,11 @@ class DualStorage:
             logger.error(f"Failed to get PostgreSQL connection parameters: {e}")
             # For development fallback - NOT for production use!
             self.pg_params = {
-                "user": os.environ.get("DB_USER", "watchadmin"),
+                "user": os.environ.get("DB_USER", "energyadmin"),
                 "password": os.environ.get("DB_PASSWORD", ""),
                 "host": os.environ.get("DB_HOST", "localhost"),
                 "port": os.environ.get("DB_PORT", "5432"),
-                "dbname": os.environ.get("DB_NAME", "watch_arb")
+                "dbname": os.environ.get("DB_NAME", "energy_data")
             }
             return self.pg_params
 
@@ -183,8 +183,8 @@ class DualStorage:
                 cur.execute(f"""
                 CREATE TABLE IF NOT EXISTS {self.postgres_table_name} (
                     item_id TEXT PRIMARY KEY,
-                    title TEXT NOT NULL,
-                    price NUMERIC(10, 2) NOT NULL,
+                    description TEXT NOT NULL,
+                    efficiency NUMERIC(10, 2) NOT NULL,
                     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
                     embedding vector({self.vector_dim}),
@@ -213,16 +213,16 @@ class DualStorage:
                     pass  # Ignore rollback errors, connection might be broken
             return False
 
-    def store_listing_with_embedding(
+    def store_energy_data_with_embedding(
         self, 
-        listing: Dict[str, Any], 
+        energy_data: Dict[str, Any], 
         embedding: Optional[np.ndarray] = None
     ) -> Dict[str, Any]:
         """
-        Store an eBay listing in both DynamoDB and PostgreSQL with its embedding
+        Store energy consumption data in both DynamoDB and PostgreSQL with its embedding
         
         Args:
-            listing: eBay listing dictionary
+            energy_data: Energy data dictionary
             embedding: Vector embedding as numpy array (1536 dimensions)
             
         Returns:
@@ -235,16 +235,16 @@ class DualStorage:
         }
         
         # Extract required fields with validation
-        item_id = listing.get("itemId")
+        item_id = energy_data.get("dataId")
         if not item_id:
-            error_msg = "Missing required field: itemId"
+            error_msg = "Missing required field: dataId"
             logger.error(error_msg)
             results["error"] = error_msg
             return results
         
         # Store in DynamoDB
         try:
-            dynamo_result = self.dynamo_storage.store_listing(listing)
+            dynamo_result = self.dynamo_storage.store_energy_data(energy_data)
             results["dynamo"] = dynamo_result
         except Exception as e:
             logger.error(f"DynamoDB storage error for item {item_id}: {e}")
@@ -259,7 +259,7 @@ class DualStorage:
             # Only attempt to store if we can connect
             if self._get_pg_connection(retry=False) is not None:
                 try:
-                    pg_result = self._store_in_postgres(listing, embedding)
+                    pg_result = self._store_in_postgres(energy_data, embedding)
                     results["postgres"] = pg_result
                 except Exception as e:
                     logger.error(f"PostgreSQL storage error for item {item_id}: {e}")
@@ -276,38 +276,40 @@ class DualStorage:
         
         return results
     
-    def _store_in_postgres(self, listing: Dict[str, Any], embedding: np.ndarray) -> Dict[str, Any]:
+    def _store_in_postgres(self, energy_data: Dict[str, Any], embedding: np.ndarray) -> Dict[str, Any]:
         """
-        Store a listing with its embedding in PostgreSQL
+        Store energy data with its embedding in PostgreSQL
         
         Args:
-            listing: eBay listing dictionary
+            energy_data: Energy consumption data dictionary
             embedding: Vector embedding as numpy array
             
         Returns:
             Dict with result information
         """
         # Extract required fields
-        item_id = listing.get("itemId")
-        title = listing.get("title", "Unknown")
+        item_id = energy_data.get("dataId")
+        title = energy_data.get("description", "Unknown")
         
-        # Extract price with validation
-        price = 0.0
-        price_data = listing.get("price", {})
-        if price_data and isinstance(price_data, dict):
-            price_value = price_data.get("value")
-            if price_value:
+        # Extract efficiency with validation
+        efficiency = 0.0
+        efficiency_data = energy_data.get("efficiency", {})
+        if efficiency_data and isinstance(efficiency_data, dict):
+            efficiency_value = efficiency_data.get("value")
+            if efficiency_value:
                 try:
-                    price = float(price_value)
+                    efficiency = float(efficiency_value)
                 except (ValueError, TypeError):
-                    logger.warning(f"Invalid price value for item {item_id}, using 0.0")
+                    logger.warning(f"Invalid efficiency value for item {item_id}, using 0.0")
+        elif isinstance(energy_data.get("efficiency"), (int, float)):
+            efficiency = float(energy_data.get("efficiency"))
         
         # Prepare metadata (store additional useful fields)
         metadata = {
-            "condition": listing.get("condition"),
-            "item_url": listing.get("itemWebUrl"),
-            "currency": price_data.get("currency", "USD") if price_data else "USD",
-            "raw_data": json.dumps({k: v for k, v in listing.items() if k not in ["itemId", "title", "price"]})
+            "source_type": energy_data.get("source_type"),
+            "data_url": energy_data.get("dataUrl"),
+            "unit": efficiency_data.get("unit", "kWh") if isinstance(efficiency_data, dict) else "kWh",
+            "raw_data": json.dumps({k: v for k, v in energy_data.items() if k not in ["dataId", "description", "efficiency"]})
         }
         
         try:
@@ -330,32 +332,32 @@ class DualStorage:
                     (
                         item_id, 
                         title, 
-                        price, 
+                        efficiency, 
                         embedding.tolist(),  # Convert numpy array to Python list
                         Json(metadata)
                     )
                 )
                 
                 conn.commit()
-                logger.info(f"Successfully stored item {item_id} in PostgreSQL with embedding")
+                logger.info(f"Successfully stored energy data {item_id} in PostgreSQL with embedding")
                 return {"success": True, "item_id": item_id}
                 
         except Exception as e:
             if conn:
                 conn.rollback()
-            logger.error(f"Failed to store item {item_id} in PostgreSQL: {e}")
+            logger.error(f"Failed to store energy data {item_id} in PostgreSQL: {e}")
             return {"success": False, "item_id": item_id, "error": str(e)}
 
-    def batch_store_listings_with_embeddings(
+    def batch_store_energy_data_with_embeddings(
         self, 
         items: List[Dict[str, Any]],
         embeddings: Optional[np.ndarray] = None
     ) -> Dict[str, Any]:
         """
-        Store multiple eBay listings in both DynamoDB and PostgreSQL
+        Store multiple energy data entries in both DynamoDB and PostgreSQL
         
         Args:
-            items: List of eBay listing dictionaries
+            items: List of energy data dictionaries
             embeddings: Optional array of embeddings (one per item)
             
         Returns:
@@ -371,7 +373,7 @@ class DualStorage:
         }
         
         # Store in DynamoDB first (batch)
-        dynamo_results = self.dynamo_storage.batch_store_listings(items)
+        dynamo_results = self.dynamo_storage.batch_store_energy_data(items)
         results["dynamo_succeeded"] = dynamo_results.get("succeeded", 0)
         results["dynamo_failed"] = dynamo_results.get("failed", 0)
         
@@ -383,39 +385,44 @@ class DualStorage:
                     # Prepare data for batch insertion
                     rows = []
                     for idx, item in enumerate(items):
-                        item_id = item.get("itemId")
+                        item_id = item.get("dataId")
                         if not item_id:
                             results["postgres_failed"] += 1
                             results["failures"].append({
-                                "error": "Missing itemId",
+                                "error": "Missing dataId",
                                 "index": idx
                             })
                             continue
                         
                         # Extract data
-                        title = item.get("title", "Unknown")
-                        price = 0.0
-                        price_data = item.get("price", {})
-                        if price_data and isinstance(price_data, dict):
-                            price_value = price_data.get("value")
-                            if price_value:
+                        description = item.get("description", "Unknown")
+                        efficiency = 0.0
+                        efficiency_data = item.get("efficiency", {})
+                        if efficiency_data and isinstance(efficiency_data, dict):
+                            efficiency_value = efficiency_data.get("value")
+                            if efficiency_value:
                                 try:
-                                    price = float(price_value)
+                                    efficiency = float(efficiency_value)
                                 except (ValueError, TypeError):
                                     pass
+                        elif isinstance(item.get("efficiency"), (int, float)):
+                            try:
+                                efficiency = float(item["efficiency"])
+                            except (ValueError, TypeError):
+                                pass
                         
                         # Prepare metadata
                         metadata = {
-                            "condition": item.get("condition"),
-                            "item_url": item.get("itemWebUrl"),
-                            "currency": price_data.get("currency", "USD") if price_data else "USD"
+                            "source_type": item.get("source_type"),
+                            "data_url": item.get("dataUrl"),
+                            "unit": efficiency_data.get("unit", "kWh") if isinstance(efficiency_data, dict) else "kWh"
                         }
                         
                         # Add to batch
                         rows.append((
                             item_id,
-                            title,
-                            price,
+                            description,
+                            efficiency,
                             embeddings[idx].tolist(),
                             Json(metadata),
                             "NOW()"  # Updated timestamp
@@ -426,27 +433,27 @@ class DualStorage:
                         # Issue: execute_values can't handle NOW() function inside the rows
                         # Solution: Use template to replace the timestamp placeholder with NOW()
                         query = sql.SQL("""
-                        INSERT INTO {} (item_id, title, price, embedding, metadata, updated_at)
+                        INSERT INTO {} (item_id, description, efficiency, embedding, metadata, updated_at)
                         VALUES %s
                         ON CONFLICT (item_id) 
                         DO UPDATE SET 
-                            title = EXCLUDED.title,
-                            price = EXCLUDED.price,
+                            description = EXCLUDED.description,
+                            efficiency = EXCLUDED.efficiency,
                             embedding = EXCLUDED.embedding,
                             metadata = EXCLUDED.metadata,
                             updated_at = NOW()
                         """).format(sql.Identifier(self.postgres_table_name))
                         
                         # Fix: Use a template with NOW() as the timestamp
-                        template = "(%(item_id)s, %(title)s, %(price)s, %(embedding)s, %(metadata)s, NOW())"
+                        template = "(%(item_id)s, %(description)s, %(efficiency)s, %(embedding)s, %(metadata)s, NOW())"
                         
                         # Convert list of tuples to list of dicts for template-based insertion
                         dict_rows = []
                         for row in rows:
                             dict_rows.append({
                                 "item_id": row[0],
-                                "title": row[1],
-                                "price": row[2],
+                                "description": row[1],
+                                "efficiency": row[2],
                                 "embedding": row[3],
                                 "metadata": row[4],
                             })
@@ -457,7 +464,7 @@ class DualStorage:
                         results["postgres_succeeded"] = len(rows)
                         results["postgres_failed"] = len(items) - len(rows)
                         
-                        logger.info(f"Successfully batch stored {len(rows)} items in PostgreSQL with embeddings")
+                        logger.info(f"Successfully batch stored {len(rows)} energy data entries in PostgreSQL with embeddings")
                     
             except Exception as e:
                 if conn:
@@ -465,7 +472,7 @@ class DualStorage:
                 results["postgres_succeeded"] = 0
                 results["postgres_failed"] = len(items)
                 results["failures"].append({"error": str(e)})
-                logger.error(f"Failed to batch store items in PostgreSQL: {e}")
+                logger.error(f"Failed to batch store energy data in PostgreSQL: {e}")
         else:
             results["postgres_failed"] = len(items)
             results["failures"].append({
