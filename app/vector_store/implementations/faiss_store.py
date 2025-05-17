@@ -6,7 +6,7 @@ import os
 import json
 import logging
 import numpy as np
-from app.schema import Document
+from app.schema.models import Document
 
 logger = logging.getLogger(__name__)
 

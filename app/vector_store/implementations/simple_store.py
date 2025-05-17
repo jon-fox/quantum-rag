@@ -10,7 +10,7 @@ import json
 import logging
 import numpy as np
 from datetime import datetime
-from app.schema import Document
+from app.schema.models import Document
 
 logger = logging.getLogger(__name__)
 

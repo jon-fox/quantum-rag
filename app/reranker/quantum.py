@@ -13,7 +13,7 @@ try:
 except ImportError:
     QISKIT_AVAILABLE = False
 
-from app.schema import Document
+from app.schema.models import Document
 from app.reranker.classical import ClassicalReranker
 
 class QuantumReranker:

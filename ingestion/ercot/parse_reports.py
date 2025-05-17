@@ -15,6 +15,15 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Try to import LangChain document loaders
+try:
+    from langchain.document_loaders import PyPDFLoader, CSVLoader, TextLoader
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
+    LANGCHAIN_AVAILABLE = True
+except ImportError:
+    logger.warning("LangChain not available. Using traditional document loading methods.")
+    LANGCHAIN_AVAILABLE = False
+
 class ERCOTReportParser:
     """Parser for ERCOT reports in various formats"""
     
@@ -26,6 +35,11 @@ class ERCOTReportParser:
             config: Configuration dictionary
         """
         self.config = config or {}
+        self.use_langchain = self.config.get("use_langchain", LANGCHAIN_AVAILABLE)
+        
+        # For chunking documents
+        self.chunk_size = self.config.get("chunk_size", 1000)
+        self.chunk_overlap = self.config.get("chunk_overlap", 200)
         
         # Try to load PDF libraries but make them optional
         try:
@@ -47,6 +61,14 @@ class ERCOTReportParser:
         Returns:
             Dictionary of structured data extracted from the report
         """
+        # Use LangChain loaders if available and enabled
+        if self.use_langchain:
+            try:
+                return self._langchain_parse_report(file_path, report_type)
+            except Exception as e:
+                logger.error(f"LangChain parsing failed: {str(e)}. Falling back to traditional parsing.")
+                
+        # Traditional parsing as fallback
         # Determine file type from extension
         _, ext = os.path.splitext(file_path)
         ext = ext.lower()
@@ -58,6 +80,80 @@ class ERCOTReportParser:
         else:
             raise ValueError(f"Unsupported file type: {ext}")
     
+    def _langchain_parse_report(self, file_path: str, report_type: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Parse report using LangChain document loaders.
+        
+        Args:
+            file_path: Path to the report file
+            report_type: Type of report for specialized parsing
+            
+        Returns:
+            Dictionary of structured data
+        """
+        if not LANGCHAIN_AVAILABLE:
+            raise ImportError("LangChain is not available")
+            
+        logger.info(f"Parsing report with LangChain: {file_path}")
+        
+        # Choose appropriate loader based on file extension
+        _, ext = os.path.splitext(file_path)
+        ext = ext.lower()
+        
+        if ext == '.pdf':
+            loader = PyPDFLoader(file_path)
+        elif ext == '.csv':
+            loader = CSVLoader(file_path)
+        else:
+            loader = TextLoader(file_path)
+        
+        # Load documents
+        documents = loader.load()
+        
+        # Split documents into chunks
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap
+        )
+        split_docs = text_splitter.split_documents(documents)
+        
+        # Process documents based on report type if needed
+        if report_type == "system_adequacy":
+            return self._process_system_adequacy_documents(split_docs)
+        elif report_type == "demand_forecast":
+            return self._process_demand_forecast_documents(split_docs)
+        
+        # Generic document processing
+        return {
+            "documents": split_docs,
+            "metadata": {
+                "file_path": file_path,
+                "report_type": report_type or "generic",
+                "num_chunks": len(split_docs),
+                "chunk_size": self.chunk_size,
+                "chunk_overlap": self.chunk_overlap,
+                "processed_with": "langchain"
+            }
+        }
+        
+    def _process_system_adequacy_documents(self, documents):
+        """Process system adequacy documents with specialized logic"""
+        # Implement specialized processing for system adequacy reports
+        return {
+            "documents": documents,
+            "report_type": "system_adequacy",
+            "processed_with": "langchain"
+        }
+        
+    def _process_demand_forecast_documents(self, documents):
+        """Process demand forecast documents with specialized logic"""
+        # Implement specialized processing for demand forecast reports
+        return {
+            "documents": documents,
+            "report_type": "demand_forecast",
+            "processed_with": "langchain"
+        }
+        
     def _parse_pdf(self, file_path: str, report_type: Optional[str] = None) -> Dict[str, Any]:
         """
         Parse PDF report and extract data.

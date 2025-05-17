@@ -22,7 +22,7 @@ app.add_middleware(
 )
 
 # Import API routes
-from app.api.routes import router as api_router
+from app.api.routes.routers import router as api_router
 app.include_router(api_router)
 
 # Health check endpoint
