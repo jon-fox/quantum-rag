@@ -14,9 +14,12 @@ logger = logging.getLogger(__name__)
 
 # Try to import langchain and sentence-transformers
 try:
-    from langchain.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
+    logger.info("Attempting to import LangChain components...")
+    from langchain_huggingface import HuggingFaceEmbeddings, OpenAIEmbeddings
+    logger.info("Successfully imported LangChain components")
     LANGCHAIN_AVAILABLE = True
-except ImportError:
+except ImportError as e:
+    logger.error(f"LangChain import error: {str(e)}")
     logger.warning("LangChain not available. Falling back to direct embedding methods.")
     LANGCHAIN_AVAILABLE = False
     
@@ -42,10 +45,16 @@ def get_embedding_model(model_name=None):
     """
     global _model
     
+    # Log environment information for debugging
+    logger.info(f"Python executable: {os.sys.executable}")
+    logger.info(f"OpenAI API Key set: {'Yes' if os.environ.get('OPENAI_API_KEY') else 'No'}")
+    logger.info(f"HuggingFace token set: {'Yes' if os.environ.get('HUGGINGFACE_API_TOKEN') else 'No'}")
+    
     if _model is not None:
         return _model
     
     model_name = model_name or os.environ.get("EMBEDDING_MODEL", "all-mpnet-base-v2")
+    logger.info(f"Using embedding model: {model_name}")
     
     if LANGCHAIN_AVAILABLE:
         try:

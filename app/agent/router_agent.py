@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 try:
     from langchain.agents import initialize_agent, Tool
     from langchain.agents import AgentType
-    from langchain.llms import OpenAI
-    from langchain.chat_models import ChatOpenAI
+    from langchain_community.llms import OpenAI
+    from langchain_openai import ChatOpenAI
     from langchain.schema.runnable import RunnablePassthrough
     LANGCHAIN_AVAILABLE = True
 except ImportError:

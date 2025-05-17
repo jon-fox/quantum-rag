@@ -19,8 +19,8 @@ try:
     from langchain.prompts import PromptTemplate, ChatPromptTemplate
     from langchain.schema.document import Document as LCDocument
     from langchain.schema.retriever import BaseRetriever
-    from langchain.llms import OpenAI
-    from langchain.chat_models import ChatOpenAI
+    from langchain_community.llms import OpenAI
+    from langchain_openai import ChatOpenAI
     from langchain.memory import ConversationBufferMemory
     LANGCHAIN_AVAILABLE = True
 except ImportError:

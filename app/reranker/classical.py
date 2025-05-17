@@ -19,7 +19,7 @@ try:
     from langchain.retrievers.document_compressors import LLMChainExtractor, LLMChainFilter
     from langchain.schema.document import Document as LCDocument
     from langchain.schema.retriever import BaseRetriever
-    from langchain.llms import OpenAI
+    from langchain_community.llms import OpenAI
     LANGCHAIN_AVAILABLE = True
 except ImportError:
     logger.warning("LangChain not available. Using traditional reranking methods.")

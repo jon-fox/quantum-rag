@@ -12,8 +12,8 @@ try:
     from langchain.schema.runnable import RunnablePassthrough
     from langchain.schema.output_parser import StrOutputParser
     from langchain.prompts import ChatPromptTemplate, PromptTemplate
-    from langchain.chat_models import ChatOpenAI
-    from langchain.vectorstores import FAISS
+    from langchain_openai import ChatOpenAI
+    from langchain_community.vectorstores import FAISS
     from app.embeddings.embeddings import get_embedding_model
     from app.reranker.classical import ClassicalReranker
     from app.reranker.quantum import QuantumReranker

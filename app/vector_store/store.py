@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # Try to import LangChain vector stores
 try:
-    from langchain.vectorstores import FAISS as LangChainFAISS
+    from langchain_community.vectorstores import FAISS as LangChainFAISS
     LANGCHAIN_AVAILABLE = True
 except ImportError:
     logger.warning("LangChain not available. Using traditional vector store implementations.")
