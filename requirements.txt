@@ -25,6 +25,8 @@ tenacity>=8.2.2
 # LangChain integration
 langchain==0.3.25
 langchain-community==0.3.24
+langchain-openai==0.3.17
+langchain-huggingface==0.2.0
 
 # Data processing
 pandas>=2.0.0
