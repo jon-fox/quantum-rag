@@ -14,7 +14,7 @@ from app.schema.models import Query, Document, SearchResponse
 from app.agent.router_agent import RagAgent
 from app.embeddings.embeddings import get_embeddings
 from app.vector_store import VectorStore
-from app.generator.llm_retriever import Generator
+from app.generator.llm_generator import Generator
 
 # Try to import LangChain integration
 try:

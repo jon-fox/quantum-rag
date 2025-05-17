@@ -5,10 +5,11 @@ This module implements traditional scoring and reranking methods for
 retrieved documents based on their relevance to the input query,
 integrated with LangChain's retriever and document compressor interfaces.
 """
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Protocol, runtime_checkable
 import numpy as np
 import logging
 from app.schema.models import Document
+import abc
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,20 @@ try:
 except ImportError:
     logger.warning("LangChain not available. Using traditional reranking methods.")
     LANGCHAIN_AVAILABLE = False
+    
+    # Define a fallback BaseRetriever when LangChain is not available
+    class BaseRetriever(abc.ABC):
+        """Abstract base class for a document retriever when LangChain is not available."""
+        
+        @abc.abstractmethod
+        def _get_relevant_documents(self, query, **kwargs):
+            """Get documents relevant to a query."""
+            pass
+            
+        @abc.abstractmethod
+        async def _aget_relevant_documents(self, query, **kwargs):
+            """Get documents relevant to a query asynchronously."""
+            pass
 
 # Simple retriever wrapper for our documents
 class ListRetriever(BaseRetriever):
