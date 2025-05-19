@@ -16,4 +16,6 @@ https://developer.ercot.com/applications/pubapi/user-guide/registration-and-auth
 # ercot profile
 https://apiexplorer.ercot.com/profile
 
+# sample agg call
+https://apiexplorer.ercot.com/api-details#api=pubapi-apim-api&operation=getData_2d_agg_as_offers_ecrsm
 
