@@ -3,6 +3,12 @@ Example script demonstrating how to use the ERCOT API client
 """
 import logging
 import json
+import os
+import sys
+
+# Add the project root to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from src.config.env_manager import load_environment
 from src.data.ercot_api.client import ERCOTClient
 

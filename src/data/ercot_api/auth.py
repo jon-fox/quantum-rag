@@ -7,7 +7,7 @@ import time
 import logging
 import threading
 import requests
-from urllib.parse import quote
+from urllib.parse import quote_plus
 from datetime import datetime, timedelta
 from src.config.env_manager import get_env_var
 
@@ -39,6 +39,7 @@ class ERCOTAuth:
         # Credentials will be loaded from environment variables
         self.username = get_env_var("ERCOT_API_USERNAME")
         self.password = get_env_var("ERCOT_API_PASSWORD")
+        self.scope = get_env_var("ERCOT_API_SCOPE", f"openid {self.CLIENT_ID} offline_access")
         
         if not self.username or not self.password:
             logger.error("ERCOT API credentials not found in environment variables")
@@ -64,22 +65,23 @@ class ERCOTAuth:
         """
         logger.info("Authenticating with ERCOT API")
         
-        # Prepare authentication parameters
-        params = {
-            "username": quote(self.username),
-            "password": quote(self.password),
-            "grant_type": "password",
-            "scope": f"openid {self.CLIENT_ID} offline_access",
-            "client_id": self.CLIENT_ID,
-            "response_type": "id_token"
-        }
+        if not self.username or not self.password:
+            raise ValueError("ERCOT API username or password not set")
+        
+        # Use the exact approach from the curl command example
+        # For simplicity, create the URL directly as in the curl example
+        auth_url = (f"{self.AUTH_URL}?username={quote_plus(str(self.username))}"
+                   f"&password={quote_plus(str(self.password))}"
+                   f"&grant_type=password"
+                   f"&scope=openid+{self.CLIENT_ID}+offline_access"
+                   f"&client_id={self.CLIENT_ID}"
+                   f"&response_type=id_token")
         
         try:
-            # Make authentication request
+            # Make authentication request exactly as shown in the curl example
             response = requests.post(
-                self.AUTH_URL,
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                data=params
+                auth_url,
+                # headers={"Content-Type": "application/x-www-form-urlencoded"}
             )
             
             # Check if authentication was successful
@@ -91,7 +93,8 @@ class ERCOTAuth:
             self.refresh_token = token_data.get("refresh_token")
             
             # Calculate token expiry time (setting to 55 minutes for safety buffer)
-            expires_in = token_data.get("expires_in", 3600)  # Default to 1 hour if not specified
+            # Convert expires_in to int, as it may be returned as a string from the API
+            expires_in = int(token_data.get("expires_in", 3600))  # Default to 1 hour if not specified
             self.token_expires_at = datetime.now() + timedelta(seconds=expires_in)
             
             # Schedule token refresh 5 minutes before expiration
