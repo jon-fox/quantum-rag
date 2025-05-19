@@ -1,0 +1,4 @@
+Usage: uvicorn [OPTIONS] APP
+Try 'uvicorn --help' for help.
+
+Error: No such option: --no-reload (Possible options: --reload, --reload-delay, --reload-dir)

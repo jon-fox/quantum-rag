@@ -13,33 +13,26 @@ else
     echo "Current directory already in PYTHONPATH"
 fi
 
-# Find if the app is already running
-PID=$(pgrep -f "python3 app.py" || pgrep -f "python app.py")
+# Simple check if app is running
+PID=$(pgrep -f "python app.py" || pgrep -f "python3 app.py")
 
 if [ ! -z "$PID" ]; then
     echo "API is already running with PID: $PID"
     echo "Stopping existing process..."
-    kill -15 $PID
-    # Give it a moment to shut down gracefully
+    kill $PID
     sleep 2
-    
-    # If it didn't shut down gracefully, force kill
-    if ps -p $PID > /dev/null; then
-        echo "Force killing process..."
-        kill -9 $PID
-    fi
-    
     echo "Previous API process stopped"
 fi
 
-# Start the API
+# Start the API the simple way
 echo "Starting API..."
-python3 app.py &
+python3 app.py > api_logs.txt 2>&1 &
 
 # Store the new PID
 NEW_PID=$!
 echo "API started with PID: $NEW_PID"
 echo "API is now running. Use 'kill $NEW_PID' to stop it manually."
+echo "Logs are being written to api_logs.txt"
 
 # Print the localhost endpoint information
 echo ""
