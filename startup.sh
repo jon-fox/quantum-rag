@@ -4,6 +4,15 @@
 
 echo "Starting up quantum_work API..."
 
+# Set the Python path to include the current directory
+CURRENT_DIR=$(pwd)
+if [[ "${PYTHONPATH}" != *"${CURRENT_DIR}"* ]]; then
+    echo "Adding current directory to PYTHONPATH"
+    export PYTHONPATH="${PYTHONPATH:+${PYTHONPATH}:}${CURRENT_DIR}"
+else
+    echo "Current directory already in PYTHONPATH"
+fi
+
 # Find if the app is already running
 PID=$(pgrep -f "python3 app.py" || pgrep -f "python app.py")
 
