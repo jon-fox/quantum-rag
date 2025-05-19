@@ -1,4 +1,14 @@
-Usage: uvicorn [OPTIONS] APP
-Try 'uvicorn --help' for help.
-
-Error: No such option: --no-reload (Possible options: --reload, --reload-delay, --reload-dir)
+2025-05-19 00:02:24,767 - src.config.env_manager - INFO - Environment variables loaded
+2025-05-19 00:02:24,768 - src.config.env_manager - INFO - All required environment variables are set
+INFO:     Will watch for changes in these directories: ['/mnt/c/Developer_Workspace/quantum_work']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [24200] using StatReload
+2025-05-19 00:02:31,061 - src.config.env_manager - INFO - Environment variables loaded
+2025-05-19 00:02:31,062 - src.config.env_manager - INFO - All required environment variables are set
+2025-05-19 00:02:31,247 - src.config.env_manager - INFO - Environment variables loaded
+2025-05-19 00:02:31,247 - src.config.env_manager - INFO - All required environment variables are set
+INFO:     Started server process [24235]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:52312 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52312 - "GET /openapi.json HTTP/1.1" 200 OK
