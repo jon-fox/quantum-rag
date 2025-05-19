@@ -50,7 +50,32 @@ The project includes integration with the ERCOT (Electric Reliability Council of
 
 ### Example Usage
 
-The `examples/ercot_api_example.py` file demonstrates how to use the ERCOT API client.
+The `examples/ercot_api_example.py` file demonstrates how to use the ERCOT API client and queries module:
+
+```python
+# Initialize ERCOT queries helper
+queries = ERCOTQueries(client)
+
+# Get 2-Day Aggregated Generation Summary
+gen_summary = queries.get_aggregated_generation_summary(
+    delivery_date_from="2025-05-17",
+    delivery_date_to="2025-05-18"
+)
+
+# Get 2-Day Aggregated Load Summary for Houston region
+load_houston = queries.get_aggregated_load_summary(
+    delivery_date_from="2025-05-17",
+    delivery_date_to="2025-05-18",
+    region="Houston"
+)
+
+# Get 2-Day Aggregated Ancillary Service Offers
+ancillary = queries.get_ancillary_service_offers(
+    service_type="REGUP",
+    delivery_date_from="2025-05-17",
+    delivery_date_to="2025-05-18"
+)
+```
 
 ## Getting Started
 

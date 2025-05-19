@@ -45,7 +45,9 @@ class ERCOTClient:
                 params=params,
                 headers={
                     "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
+                    "Ocp-Apim-Subscription-Key": token,  # ERCOT API requires this header
+                    "Accept": "application/json"
                 }
             )
             
