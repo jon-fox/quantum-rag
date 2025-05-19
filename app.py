@@ -4,8 +4,17 @@ FastAPI application for quantum-enhanced reranking in RAG pipelines
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+import logging
 
 from src.api.energy_query_api import router as energy_router
+from src.config.env_manager import load_environment
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Load environment variables at startup
+load_environment()
 
 # Create FastAPI app
 app = FastAPI(

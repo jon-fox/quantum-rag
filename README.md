@@ -21,6 +21,7 @@ The research focuses on:
 - Comparing classical vs. quantum reranking approaches with identical retrieval and generation components
 - Building an agent-based controller to intelligently select between classical or quantum reranking based on query characteristics
 - Evaluating end-to-end performance across multiple LLM backends
+- Analyzing real-time ERCOT energy data for market trend predictions
 
 ## API Endpoints
 
@@ -28,6 +29,28 @@ The project provides a focused API for energy data analysis:
 
 - `POST /api/energy/query`: Query ERCOT energy data using either classical, quantum, or automatic reranking selection
 - `GET /api/energy/health`: Simple health check endpoint
+
+## ERCOT API Integration
+
+The project includes integration with the ERCOT (Electric Reliability Council of Texas) API for accessing real-time and historical energy data:
+
+- Authentication with automatic token refresh every 55 minutes (tokens expire after 60 minutes)
+- Access to real-time pricing data, historical load data, and forecasts
+- Environment variable management for secure credential storage
+
+### Setup ERCOT API Credentials
+
+1. Copy the `.env.example` file to `.env` in the project root
+2. Add your ERCOT API credentials to the `.env` file:
+   ```
+   ERCOT_API_USERNAME=your-username
+   ERCOT_API_PASSWORD=your-password
+   ```
+3. The application will automatically load these credentials on startup
+
+### Example Usage
+
+The `examples/ercot_api_example.py` file demonstrates how to use the ERCOT API client.
 
 ## Getting Started
 

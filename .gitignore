@@ -37,6 +37,7 @@ credentials.txt
 # Local development settings
 .env
 .env.local
+.env.example
 
 # Log files
 *.log
