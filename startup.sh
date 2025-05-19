@@ -40,3 +40,11 @@ python3 app.py &
 NEW_PID=$!
 echo "API started with PID: $NEW_PID"
 echo "API is now running. Use 'kill $NEW_PID' to stop it manually."
+
+# Print the localhost endpoint information
+echo ""
+echo "=============================================="
+echo "API should be available at: http://localhost:8000"
+echo "API documentation available at: http://localhost:8000/docs"
+echo "=============================================="
+echo ""
