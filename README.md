@@ -95,4 +95,3 @@ uvicorn app:app --reload
 ```
 
 This work explores the targeted application of quantum computation to a specific NLP pipeline component, with potential applications in energy system forecasting and operational analysis.
-
