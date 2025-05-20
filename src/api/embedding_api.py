@@ -139,12 +139,10 @@ def create_embedding_router() -> APIRouter:
                 items, embeddings = load_embeddings(str(embedding_path))
                 _loaded_embeddings[embedding_file] = (items, embeddings)
             except (FileNotFoundError, json.JSONDecodeError) as e:
-                # If we can't load embeddings, use the demo data from example script
-                from src.scripts.example_embedding import SAMPLE_ENERGY_DATA
-                from src.embeddings.embed_utils import embed_energy_data_items
-                
-                # Use OpenAI for embedding generation
-                items, embeddings = embed_energy_data_items(SAMPLE_ENERGY_DATA, default_provider)
+                # If we can't load embeddings, use empty data as a fallback
+                print(f"Warning: Failed to load embeddings from {embedding_path}: {e}. Using empty data for this search.")
+                items = []
+                embeddings = np.array([])
                 _loaded_embeddings[embedding_file] = (items, embeddings)
         else:
             items, embeddings = _loaded_embeddings[embedding_file]
