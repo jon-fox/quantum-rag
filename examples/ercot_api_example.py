@@ -26,41 +26,30 @@ def main():
     # Initialize ERCOT API client
     client = ERCOTClient()
     
-    # Initialize ERCOT queries helper
-    queries = ERCOTQueries(client)
+    today = datetime.today()
+    yesterday = today - timedelta(days=1)
+    three_days_ago = today - timedelta(days=3)
+
+    delivery_date_from_str = three_days_ago.strftime('%Y-%m-%d')
+    delivery_date_to_str = yesterday.strftime('%Y-%m-%d')
+    
+    # Initialize ERCOT queries helper with delivery dates
+    queries = ERCOTQueries(
+        client=client,
+        delivery_date_from=delivery_date_from_str,
+        delivery_date_to=delivery_date_to_str
+    )
     
     try:
-        # Example 1: Get 2-Day Aggregated Generation Summary
-        # logger.info("Fetching 2-Day Aggregated Generation Summary...")
-        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-        today = datetime.now().strftime('%Y-%m-%d')
-        
-        # gen_summary = queries.get_aggregated_generation_summary(
-        #     delivery_date_from=yesterday,
-        #     delivery_date_to=today
-        # )
-        # print("2-Day Aggregated Generation Summary:")
-        # print(json.dumps(gen_summary, indent=2))
-        
         # Example 2: Get 2-Day Aggregated Load Summary for Houston region
-        logger.info("Fetching 2-Day Aggregated Load Summary for Houston...")
-        load_houston = queries.get_aggregated_generation_summary(
-            delivery_date_from=yesterday,
-            delivery_date_to=today,
+        # The delivery dates are now set at the instance level
+        logger.info(f"Fetching 2-Day Aggregated Load Summary for Houston from {delivery_date_from_str} to {delivery_date_to_str}...")
+        load_houston = queries.get_aggregated_load_summary(
             region="Houston"
         )
+        
         print("\n2-Day Aggregated Load Summary (Houston):")
         print(json.dumps(load_houston, indent=2))
-        
-        # Example 3: Get 2-Day Aggregated Ancillary Service Offers
-        # logger.info("Fetching 2-Day Aggregated Ancillary Service Offers (REGUP)...")
-        # ancillary = queries.get_ancillary_service_offers(
-        #     service_type="REGUP",
-        #     delivery_date_from=yesterday,
-        #     delivery_date_to=today
-        # )
-        # print("\n2-Day Aggregated Ancillary Service Offers (REGUP):")
-        # print(json.dumps(ancillary, indent=2))
         
     except Exception as e:
         logger.error(f"Error accessing ERCOT API: {str(e)}")
