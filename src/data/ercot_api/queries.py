@@ -109,13 +109,13 @@ class ERCOTQueries:
             dict: The API response containing generation summary data.
         """
         # Determine the endpoint based on region
-        endpoint_suffix = "2d_agg_load_sum" # Original name, seems like a typo, maybe "2d_agg_gen_sum"?
+        endpoint_suffix = "2d_agg_gen_summary" # Original name, seems like a typo, maybe "2d_agg_gen_sum"?
         # if region:
         #     region_lower = region.lower()
         #     if region_lower in ["houston", "north", "south", "west"]:
         #         endpoint_suffix = f"2d_agg_gen_sum_{region_lower}" # Assuming gen for generation
         
-        endpoint = f"{self.PUBLIC_REPORTS_BASE}/np3-911-er/{endpoint_suffix}" # np3-911-er is typically for generation
+        endpoint = f"{self.PUBLIC_REPORTS_BASE}/np3-910-er/{endpoint_suffix}" # np3-911-er is typically for generation
         
         # Build query parameters
         # Note: The original implementation for this method used delivery_date_from and delivery_date_to directly
