@@ -41,15 +41,32 @@ def main():
     )
     
     try:
-        # Example 2: Get 2-Day Aggregated Load Summary for Houston region
+        # Example 1: Get 2-Day Aggregated Load Summary for Houston region
         # The delivery dates are now set at the instance level
         logger.info(f"Fetching 2-Day Aggregated Load Summary for Houston from {delivery_date_from_str} to {delivery_date_to_str}...")
         load_houston = queries.get_aggregated_load_summary(
             region="Houston"
         )
-        
         print("\n2-Day Aggregated Load Summary (Houston):")
         print(json.dumps(load_houston, indent=2))
+
+        # Example 2: Get 2-Day Aggregated Generation Summary (overall)
+        logger.info(f"Fetching 2-Day Aggregated Generation Summary from {delivery_date_from_str} to {delivery_date_to_str}...")
+        gen_summary = queries.get_agg_gen_summary()
+        print("\n2-Day Aggregated Generation Summary (Overall):")
+        print(json.dumps(gen_summary, indent=2))
+
+        # Example 3: Get 2-Day Ancillary Service Offers for REGUP
+        ancillary_service_type = "REGUP"
+        logger.info(f"Fetching 2-Day Ancillary Service Offers for {ancillary_service_type} from {delivery_date_from_str} to {delivery_date_to_str}...")
+        ancillary_offers = queries.get_ancillary_service_offers(
+            service_type=ancillary_service_type,
+            # Optionally, you can add hour_ending_from and hour_ending_to
+            # hour_ending_from=1,
+            # hour_ending_to=24 
+        )
+        print(f"\n2-Day Ancillary Service Offers ({ancillary_service_type}):")
+        print(json.dumps(ancillary_offers, indent=2))
         
     except Exception as e:
         logger.error(f"Error accessing ERCOT API: {str(e)}")
