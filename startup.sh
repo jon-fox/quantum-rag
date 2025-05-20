@@ -26,13 +26,13 @@ fi
 
 # Start the API the simple way
 echo "Starting API..."
-python3 app.py > api_logs.txt 2>&1 &
+python3 app.py > api_logs.log 2>&1 &
 
 # Store the new PID
 NEW_PID=$!
 echo "API started with PID: $NEW_PID"
 echo "API is now running. Use 'kill $NEW_PID' to stop it manually."
-echo "Logs are being written to api_logs.txt"
+echo "Logs are being written to api_logs.log"
 
 # Print the localhost endpoint information
 echo ""

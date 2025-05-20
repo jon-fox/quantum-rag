@@ -4,6 +4,7 @@ ERCOT API client for accessing ERCOT energy data
 import logging
 import requests
 from .auth import get_auth_manager
+import os
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -46,7 +47,7 @@ class ERCOTClient:
                 headers={
                     "Authorization": f"Bearer {token}",
                     "Content-Type": "application/json",
-                    "Ocp-Apim-Subscription-Key": token,  # ERCOT API requires this header
+                    "Ocp-Apim-Subscription-Key": os.getenv("ERCOT_API_TOKEN"),  # ERCOT API requires this header
                     "Accept": "application/json"
                 }
             )

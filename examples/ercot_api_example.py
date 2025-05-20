@@ -31,20 +31,20 @@ def main():
     
     try:
         # Example 1: Get 2-Day Aggregated Generation Summary
-        logger.info("Fetching 2-Day Aggregated Generation Summary...")
+        # logger.info("Fetching 2-Day Aggregated Generation Summary...")
         yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
         today = datetime.now().strftime('%Y-%m-%d')
         
-        gen_summary = queries.get_aggregated_generation_summary(
-            delivery_date_from=yesterday,
-            delivery_date_to=today
-        )
-        print("2-Day Aggregated Generation Summary:")
-        print(json.dumps(gen_summary, indent=2))
+        # gen_summary = queries.get_aggregated_generation_summary(
+        #     delivery_date_from=yesterday,
+        #     delivery_date_to=today
+        # )
+        # print("2-Day Aggregated Generation Summary:")
+        # print(json.dumps(gen_summary, indent=2))
         
         # Example 2: Get 2-Day Aggregated Load Summary for Houston region
         logger.info("Fetching 2-Day Aggregated Load Summary for Houston...")
-        load_houston = queries.get_aggregated_load_summary(
+        load_houston = queries.get_aggregated_generation_summary(
             delivery_date_from=yesterday,
             delivery_date_to=today,
             region="Houston"
@@ -53,14 +53,14 @@ def main():
         print(json.dumps(load_houston, indent=2))
         
         # Example 3: Get 2-Day Aggregated Ancillary Service Offers
-        logger.info("Fetching 2-Day Aggregated Ancillary Service Offers (REGUP)...")
-        ancillary = queries.get_ancillary_service_offers(
-            service_type="REGUP",
-            delivery_date_from=yesterday,
-            delivery_date_to=today
-        )
-        print("\n2-Day Aggregated Ancillary Service Offers (REGUP):")
-        print(json.dumps(ancillary, indent=2))
+        # logger.info("Fetching 2-Day Aggregated Ancillary Service Offers (REGUP)...")
+        # ancillary = queries.get_ancillary_service_offers(
+        #     service_type="REGUP",
+        #     delivery_date_from=yesterday,
+        #     delivery_date_to=today
+        # )
+        # print("\n2-Day Aggregated Ancillary Service Offers (REGUP):")
+        # print(json.dumps(ancillary, indent=2))
         
     except Exception as e:
         logger.error(f"Error accessing ERCOT API: {str(e)}")

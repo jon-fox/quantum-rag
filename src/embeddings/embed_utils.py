@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 # Try to import models based on what's installed
 try:
-    import openai
     from openai import OpenAI  # Import the OpenAI client class for v1.0+
     OPENAI_AVAILABLE = True
     # Initialize OpenAI client using API key from environment variable

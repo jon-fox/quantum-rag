@@ -2,7 +2,7 @@
 ERCOT API queries for common data endpoints
 """
 import logging
-import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 from .client import ERCOTClient
 
@@ -53,28 +53,28 @@ class ERCOTQueries:
         """
         # Set default dates if not provided
         if not delivery_date_from:
-            yesterday = datetime.date.today() - datetime.timedelta(days=1)
+            yesterday = datetime.today() - timedelta(days=1)
             delivery_date_from = yesterday.strftime('%Y-%m-%d')
             
         if not delivery_date_to:
-            today = datetime.date.today()
+            today = datetime.today()
             delivery_date_to = today.strftime('%Y-%m-%d')
             
         # Determine the endpoint based on region
-        endpoint_suffix = "2d_agg_gen_sum"
-        if region:
-            region_lower = region.lower()
-            if region_lower in ["houston", "north", "south", "west"]:
-                endpoint_suffix = f"2d_agg_gen_sum_{region_lower}"
+        endpoint_suffix = "2d_agg_load_summary_houston"
+        # if region:
+        #     region_lower = region.lower()
+        #     if region_lower in ["houston", "north", "south", "west"]:
+        #         endpoint_suffix = f"2d_agg_gen_sum_{region_lower}"
         
-        endpoint = f"{self.PUBLIC_REPORTS_BASE}/np3-911-er/{endpoint_suffix}"
+        endpoint = f"{self.PUBLIC_REPORTS_BASE}/np3-910-er/{endpoint_suffix}"
         
         # Build query parameters
         params = {
-            "deliveryDateFrom": delivery_date_from,
-            "deliveryDateTo": delivery_date_to,
-            "page": page,
-            "size": size
+            "SCEDTimestampFrom": "2025-05-12T00:00:00",
+            "SCEDTimestampTo": "2025-05-14T00:00:00",
+            # "page": 0,
+            # "size": 100
         }
         
         logger.info(f"Fetching generation summary from {delivery_date_from} to {delivery_date_to}")
@@ -106,26 +106,26 @@ class ERCOTQueries:
         """
         # Set default dates if not provided
         if not delivery_date_from:
-            yesterday = datetime.date.today() - datetime.timedelta(days=1)
+            yesterday = datetime.today() - timedelta(days=1)
             delivery_date_from = yesterday.strftime('%Y-%m-%d')
             
         if not delivery_date_to:
-            today = datetime.date.today()
+            today = datetime.today()
             delivery_date_to = today.strftime('%Y-%m-%d')
             
         # Determine the endpoint based on region
         endpoint_suffix = "2d_agg_load_sum"
-        if region:
-            region_lower = region.lower()
-            if region_lower in ["houston", "north", "south", "west"]:
-                endpoint_suffix = f"2d_agg_load_sum_{region_lower}"
+        # if region:
+        #     region_lower = region.lower()
+        #     if region_lower in ["houston", "north", "south", "west"]:
+        #         endpoint_suffix = f"2d_agg_load_sum_{region_lower}"
         
         endpoint = f"{self.PUBLIC_REPORTS_BASE}/np3-911-er/{endpoint_suffix}"
         
         # Build query parameters
         params = {
-            "deliveryDateFrom": delivery_date_from,
-            "deliveryDateTo": delivery_date_to,
+            "SCEDTimestampFrom": delivery_date_from,
+            "SCEDTimestampTo": delivery_date_to,
             "page": page,
             "size": size
         }
@@ -168,11 +168,11 @@ class ERCOTQueries:
             
         # Set default dates if not provided
         if not delivery_date_from:
-            yesterday = datetime.date.today() - datetime.timedelta(days=1)
+            yesterday = datetime.today() - timedelta(days=1)
             delivery_date_from = yesterday.strftime('%Y-%m-%d')
             
         if not delivery_date_to:
-            today = datetime.date.today()
+            today = datetime.today()
             delivery_date_to = today.strftime('%Y-%m-%d')
         
         # Build the endpoint
