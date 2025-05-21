@@ -14,3 +14,4 @@ pipreqs /mnt/c/Developer_Workspace/quantum_work --force
 
 # clean py env
 python -m venv venv --clear
+
