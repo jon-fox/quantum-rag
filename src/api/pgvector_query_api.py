@@ -1,15 +1,14 @@
 import os
 import logging
 import sys
-from typing import List, Optional # Added Optional, List
+from typing import List, Optional
 
-import numpy as np # Kept for query_embedding.shape
-from fastapi import FastAPI, HTTPException, Depends # Changed from Flask
-from pydantic import BaseModel # For request/response models
-import uvicorn # For running the app
+import numpy as np
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 # Adjust sys.path to allow imports from the 'src' directory
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..')) # Adds quantum_work to sys.path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 try:
     from src.storage.pgvector_storage import PgVectorStorage
@@ -17,11 +16,33 @@ try:
 except ImportError as e:
     logging.error(f"Error importing necessary modules: {e}")
     logging.error("Please ensure the script is run from a context where 'src' is discoverable, or adjust PYTHONPATH.")
-    sys.exit(1)
+    sys.exit(1) # Exit if critical imports fail
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# --- Direct Module-Level Initialization ---
+# Instances are created when this module is imported.
+# If initialization fails, an error will be raised during import.
+try:
+    logger.info("Attempting direct initialization of PgVectorStorage at module level...")
+    pg_storage = PgVectorStorage(
+        app_environment=os.environ.get("APP_ENVIRONMENT", "prod") # Changed from dev to prod to match PgVectorStorage default
+    )
+    logger.info("PgVectorStorage initialized directly at module level.")
+except Exception as e:
+    logger.error(f"CRITICAL: Failed to initialize PgVectorStorage at module level: {e}", exc_info=True)
+    raise RuntimeError(f"CRITICAL_ERROR_PGVECTOR_INIT: {e}") from e
+
+try:
+    logger.info("Attempting direct initialization of EmbeddingProvider at module level...")
+    embed_provider = get_embedding_provider()
+    logger.info(f"EmbeddingProvider initialized directly at module level. Type: {type(embed_provider).__name__}")
+except Exception as e:
+    logger.error(f"CRITICAL: Failed to initialize EmbeddingProvider at module level: {e}", exc_info=True)
+    raise RuntimeError(f"CRITICAL_ERROR_EMBEDDING_PROVIDER_INIT: {e}") from e
+
 
 # --- Pydantic Models ---
 class SimilarityQuery(BaseModel):
@@ -40,151 +61,145 @@ class SimilarityResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
 
-# --- FastAPI app and Global instances ---
-app = FastAPI(title="PgVector Query API", version="1.0.0")
+class DatabaseListResponse(BaseModel):
+    databases: List[str]
 
-# Global variables to hold instances, initialized at startup
-pg_vector_storage_instance: Optional[PgVectorStorage] = None
-embedding_provider_instance: Optional[EmbeddingProvider] = None
+class TableListResponse(BaseModel):
+    tables: List[str]
 
-# --- Lifespan Events (Startup/Shutdown) ---
-@app.on_event("startup")
-async def startup_event():
-    global pg_vector_storage_instance, embedding_provider_instance
-    logger.info("Application startup...")
-    try:
-        logger.info("Initializing PgVectorStorage...")
-        # PgVectorStorage will attempt to load DB params from SSM or .env
-        # APP_ENVIRONMENT env var can be set to 'dev', 'prod', etc.
-        pg_vector_storage_instance = PgVectorStorage(
-            app_environment=os.environ.get("APP_ENVIRONMENT", "dev")
-        )
-        logger.info("PgVectorStorage initialized successfully.")
-    except Exception as e:
-        logger.error(f"Failed to initialize PgVectorStorage during startup: {e}", exc_info=True)
-        raise RuntimeError(f"Could not initialize PgVectorStorage: {e}")
+class ExecuteQueryRequest(BaseModel):
+    query: str
 
-    try:
-        logger.info("Initializing EmbeddingProvider...")
-        # get_embedding_provider will use EMBEDDING_PROVIDER env var or defaults
-        embedding_provider_instance = get_embedding_provider()
-        logger.info(f"EmbeddingProvider initialized with type: {type(embedding_provider_instance).__name__}")
-    except Exception as e:
-        logger.error(f"Failed to initialize EmbeddingProvider during startup: {e}", exc_info=True)
-        raise RuntimeError(f"Could not initialize EmbeddingProvider: {e}")
-    logger.info("Application startup completed.")
+class ExecuteQueryResponse(BaseModel):
+    columns: List[str]
+    rows: List[List[str]]
+    row_count: int
+    error: Optional[str] = None
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    logger.info("Application shutdown...")
-    global pg_vector_storage_instance, embedding_provider_instance
-    if pg_vector_storage_instance:
-        try:
-            logger.info("Closing PgVectorStorage connection...")
-            pg_vector_storage_instance.close_db_connection() # Use the new method
-            logger.info("PgVectorStorage connection closed.")
-        except Exception as e:
-            logger.error(f"Error closing PgVectorStorage connection: {e}", exc_info=True)
-    
-    pg_vector_storage_instance = None
-    embedding_provider_instance = None # Clear instance
-    logger.info("Application shutdown completed.")
-
-# --- Dependencies ---
-# These dependencies will provide the initialized instances to the path operations.
-# They rely on the startup event to have initialized the global instances.
-
-def get_pg_storage_dependency() -> PgVectorStorage:
-    if pg_vector_storage_instance is None:
-        logger.error("PgVectorStorage instance is not available. Startup might have failed.")
-        raise HTTPException(status_code=503, detail="Service not available: PgVectorStorage not initialized.")
-    return pg_vector_storage_instance
-
-def get_embedding_provider_dependency() -> EmbeddingProvider:
-    if embedding_provider_instance is None:
-        logger.error("EmbeddingProvider instance is not available. Startup might have failed.")
-        raise HTTPException(status_code=503, detail="Service not available: EmbeddingProvider not initialized.")
-    return embedding_provider_instance
+# --- APIRouter ---
+# Changed from FastAPI app to APIRouter
+router = APIRouter()
 
 # --- API Endpoints ---
-@app.post("/find_similar_documents", response_model=SimilarityResponse)
-async def find_similar_documents_api(
-    query: SimilarityQuery,
-    storage: PgVectorStorage = Depends(get_pg_storage_dependency),
-    embed_provider: EmbeddingProvider = Depends(get_embedding_provider_dependency)
-):
-    # Pydantic handles query_text presence and top_k type.
-    # Additional validation for top_k's value:
+@router.post("/find_similar_documents", response_model=SimilarityResponse)
+async def find_similar_documents_api(query: SimilarityQuery): # Removed Depends
+    if not pg_storage or not embed_provider:
+        raise HTTPException(status_code=503, detail="A critical service (DB or Embeddings) is not available.")
     if query.top_k <= 0:
         raise HTTPException(status_code=400, detail="'top_k' must be a positive integer")
-
     try:
         logger.info(f"Received query: '{query.query_text}', top_k: {query.top_k}")
-
-        # 1. Generate embedding for the query text
         query_embedding_list = embed_provider.get_embeddings([query.query_text])
-        if not query_embedding_list: # Should not happen if get_embeddings is robust
+        if not query_embedding_list:
             logger.error("Failed to generate embedding for query text: empty list returned.")
             raise HTTPException(status_code=500, detail="Failed to generate query embedding.")
         query_embedding = query_embedding_list[0]
-        
         logger.info(f"Generated query embedding. Shape: {getattr(query_embedding, 'shape', 'N/A')}")
-
-        # 2. Find similar embeddings using PgVectorStorage
-        similar_results = storage.find_similar_embeddings(
+        similar_results = pg_storage.find_similar_embeddings(
             query_embedding=query_embedding,
             top_k=query.top_k,
-            metric="cosine" # Or "l2", "inner_product" depending on your setup
+            metric="cosine"
         )
         logger.info(f"Found {len(similar_results)} similar results from database.")
-
         return SimilarityResponse(
             query_text=query.query_text,
             top_k=query.top_k,
             similar_documents=[
-                SimilarDocument(vector_id=str(vec_id), distance_score=float(score)) # Ensure types
+                SimilarDocument(vector_id=str(vec_id), distance_score=float(score))
                 for vec_id, score in similar_results
             ]
         )
-    except HTTPException: # Re-raise HTTPExceptions directly
+    except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error processing /find_similar_documents: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An internal error occurred processing your request.")
 
-@app.get("/health", response_model=HealthResponse)
+@router.get("/health", response_model=HealthResponse)
 async def health_check():
-    db_healthy = pg_vector_storage_instance is not None
-    embed_healthy = embedding_provider_instance is not None
+    db_healthy = pg_storage is not None 
+    embed_healthy = embed_provider is not None
     
-    # More sophisticated checks can be added here (e.g., pinging the DB)
-    # For example:
-    # if db_healthy:
-    #     try:
-    #         # pg_vector_storage_instance.ping_db() # Hypothetical method
-    #     except Exception:
-    #         db_healthy = False
-    #         logger.warning("Health check: DB ping failed.")
-
     if db_healthy and embed_healthy:
-        return HealthResponse(status="healthy")
-    else:
-        details = []
-        if not db_healthy: details.append("PgVectorStorage: uninitialized or unhealthy")
-        if not embed_healthy: details.append("EmbeddingProvider: uninitialized or unhealthy")
-        status_detail = "; ".join(details)
-        logger.warning(f"Health check status: unhealthy ({status_detail})")
-        # To return a 503 status for unhealthy, you would raise HTTPException here:
-        # raise HTTPException(status_code=503, detail=f"Service unhealthy: {status_detail}")
-        # For now, returning 200 with unhealthy status in body:
-        return HealthResponse(status=f"unhealthy ({status_detail})")
+        # To be more thorough, attempt a lightweight DB operation for db_healthy
+        db_truly_healthy = False
+        if pg_storage:
+            try:
+                pg_storage.list_databases() 
+                db_truly_healthy = True
+            except Exception as e:
+                logger.warning(f"Health check: PgVectorStorage seems initialized but a test operation failed: {e}")
+                db_truly_healthy = False
+        
+        if db_truly_healthy and embed_healthy:
+            return HealthResponse(status="healthy")
+        else:
+            details = []
+            if not db_truly_healthy: details.append("PgVectorStorage: initialized but unhealthy or test operation failed")
+            if not embed_healthy: details.append("EmbeddingProvider: uninitialized (should not happen if app started)") # Should be caught at startup
+            status_detail = "; ".join(details)
+            logger.warning(f"Health check status: unhealthy ({status_detail})")
+            return HealthResponse(status=f"unhealthy ({status_detail})")
 
-if __name__ == '__main__':
-    host = os.environ.get("API_HOST", "127.0.0.1")
-    port = int(os.environ.get("API_PORT", "5001"))
-    
-    # For development, reload=True is useful. It watches for file changes.
-    # For production, set reload=False and consider using Gunicorn with Uvicorn workers.
-    # Example: uvicorn.run("your_module:app", host="0.0.0.0", port=80, workers=4)
-    uvicorn.run("pgvector_query_api:app", host=host, port=port, reload=True, log_level="info")
+    else: # This case should ideally not be reached if init failures are fatal
+        details = []
+        if not db_healthy: details.append("PgVectorStorage: FAILED_TO_INITIALIZE_AT_MODULE_LEVEL")
+        if not embed_healthy: details.append("EmbeddingProvider: FAILED_TO_INITIALIZE_AT_MODULE_LEVEL")
+        status_detail = "; ".join(details)
+        logger.error(f"CRITICAL HEALTH CHECK FAILURE: {status_detail}")
+        return HealthResponse(status=f"CRITICALLY_UNHEALTHY ({status_detail})")
+
+
+@router.get("/databases", response_model=DatabaseListResponse)
+async def list_databases_api(): # Removed Depends
+    if not pg_storage:
+        raise HTTPException(status_code=503, detail="PgVectorStorage is not available.")
+    try:
+        databases = pg_storage.list_databases()
+        return DatabaseListResponse(databases=databases)
+    except Exception as e:
+        logger.error(f"Error listing databases: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list databases: {str(e)}")
+
+@router.get("/tables", response_model=TableListResponse)
+async def list_tables_api(): # Removed Depends
+    if not pg_storage:
+        raise HTTPException(status_code=503, detail="PgVectorStorage is not available.")
+    try:
+        tables = pg_storage.list_tables()
+        return TableListResponse(tables=tables)
+    except Exception as e:
+        logger.error(f"Error listing tables: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list tables: {str(e)}")
+
+@router.post("/execute_query", response_model=ExecuteQueryResponse)
+async def execute_query_api(request: ExecuteQueryRequest): # Removed Depends
+    if not pg_storage:
+        raise HTTPException(status_code=503, detail="PgVectorStorage is not available.")
+    if not request.query.strip().upper().startswith("SELECT"):
+        raise HTTPException(status_code=400, detail="Only SELECT queries are allowed.")
+    try:
+        column_names, result_rows, error_msg = pg_storage.execute_select_query(request.query)
+        if error_msg:
+            logger.warning(f"Query execution failed with error from storage: {error_msg}. Query: {request.query[:200]}")
+            return ExecuteQueryResponse(columns=[], rows=[], row_count=0, error=error_msg)
+        
+        processed_rows = []
+        if result_rows:
+            processed_rows = [list(map(str, r)) for r in result_rows]
+        
+        final_columns = column_names if column_names is not None else []
+        
+        return ExecuteQueryResponse(
+            columns=final_columns,
+            rows=processed_rows,
+            row_count=len(processed_rows),
+            error=None
+        )
+    except ValueError as ve:
+        logger.warning(f"Query execution denied or failed API-level validation: {ve}", exc_info=True)
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Unexpected error in /execute_query endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"An internal server error occurred: {str(e)}")
 

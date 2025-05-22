@@ -51,17 +51,23 @@ class PgVectorStorage:
         self.pg_params: Optional[Dict[str, str]] = db_params
         self.schema_initialized = False
         self.app_environment = app_environment or os.environ.get("APP_ENVIRONMENT", "prod")
+        logger.info(f"PgVectorStorage: Initializing with app_environment='{self.app_environment}'") # Added log
 
         if not self.pg_params:
-            logger.info("db_params not provided, attempting to load from AWS SSM Parameter Store...")
-            if boto3 and self._load_db_params_from_ssm():
-                logger.info("Successfully loaded DB params from AWS SSM Parameter Store.")
+            logger.info("PgVectorStorage: db_params not provided, attempting to load from AWS SSM Parameter Store...")
+            if boto3 and self._load_db_params_from_ssm(): # _load_db_params_from_ssm logs its own success/failure
+                pass # Logging is handled inside the method
             else:
-                logger.info("Failed to load DB params from SSM or boto3 is not available. Falling back to environment variables.")
-                self._load_db_params_from_env()
+                # This block is reached if boto3 is None OR _load_db_params_from_ssm returns False
+                logger.info("PgVectorStorage: Failed to load DB params from SSM or boto3 not available. Falling back to environment variables.")
+                self._load_db_params_from_env() # _load_db_params_from_env logs the params it loads
         
-        if not self.pg_params:
-            logger.warning("DB connection parameters not loaded. Connection attempts will likely fail.")
+        if self.pg_params:
+            # Log successfully loaded parameters, masking password
+            masked_params = {k: (v if k != 'password' else '********') for k, v in self.pg_params.items()}
+            logger.info(f"PgVectorStorage: Resolved DB parameters: {masked_params}")
+        else:
+            logger.warning("PgVectorStorage: DB connection parameters NOT successfully loaded after all attempts (SSM, Env Vars). Connection attempts will likely fail.")
 
         if not lazy_init:
             self._init_schema()
@@ -73,10 +79,10 @@ class PgVectorStorage:
         Returns True if parameters are successfully loaded, False otherwise.
         """
         if not boto3:
-            logger.warning("boto3 is not installed or importable. Cannot load DB params from SSM.")
+            logger.warning("PgVectorStorage: boto3 is not installed or importable. Cannot load DB params from SSM.") # Added PgVectorStorage prefix
             return False
         if not self.app_environment:
-            logger.warning("APP_ENVIRONMENT is not set. Cannot load DB params from SSM.")
+            logger.warning("PgVectorStorage: APP_ENVIRONMENT is not set. Cannot load DB params from SSM.") # Added PgVectorStorage prefix
             return False
 
         try:
@@ -100,28 +106,28 @@ class PgVectorStorage:
                     )
                     value = response.get('Parameter', {}).get('Value')
                     if value is None:
-                        logger.error(f"SSM parameter \'{param_name}\' is missing Value field in response.")
+                        logger.error(f"PgVectorStorage: SSM parameter '{param_name}' is missing Value field in response.") # Added PgVectorStorage prefix
                         return False
                     loaded_params[key] = value
                 except ssm_client.exceptions.ParameterNotFound:
-                    logger.error(f"SSM parameter \'{param_name}\' not found.")
+                    logger.error(f"PgVectorStorage: SSM parameter '{param_name}' not found.") # Added PgVectorStorage prefix
                     return False
                 except Exception as e:
-                    logger.error(f"Failed to fetch SSM parameter \'{param_name}\': {e}")
+                    logger.error(f"PgVectorStorage: Failed to fetch SSM parameter '{param_name}': {e}") # Added PgVectorStorage prefix
                     return False
             
             # Ensure all required parameters were loaded
             required_keys = ["host", "port", "dbname", "user", "password"]
             if not all(key in loaded_params for key in required_keys):
-                logger.error(f"One or more required DB parameters missing after SSM load attempt. Loaded: {list(loaded_params.keys())}")
+                logger.error(f"PgVectorStorage: One or more required DB parameters missing after SSM load attempt. Loaded: {list(loaded_params.keys())}") # Added PgVectorStorage prefix
                 return False
 
             self.pg_params = loaded_params
-            logger.info(f"Loaded PostgreSQL params from SSM: host={self.pg_params.get('host')}, dbname={self.pg_params.get('dbname')}")
+            logger.info(f"PgVectorStorage: Successfully loaded PostgreSQL params from SSM: host={self.pg_params.get('host')}, dbname={self.pg_params.get('dbname')}") # Added PgVectorStorage prefix
             return True
 
         except Exception as e:
-            logger.error(f"Error initializing SSM client or loading parameters: {e}")
+            logger.error(f"PgVectorStorage: Error initializing SSM client or loading parameters: {e}") # Added PgVectorStorage prefix
             return False
 
     def _load_db_params_from_env(self):
@@ -131,9 +137,14 @@ class PgVectorStorage:
             "port": os.environ.get("DB_PORT", "5432"),
             "dbname": os.environ.get("DB_NAME", "energy_data"),
             "user": os.environ.get("DB_USER", "energyadmin"),
-            "password": os.environ.get("DB_PASSWORD", "")
+            "password": os.environ.get("DB_PASSWORD", "") # Ensure DB_PASSWORD is set
         }
-        logger.info(f"Loaded PostgreSQL params from environment: host={self.pg_params.get('host')}, dbname={self.pg_params.get('dbname')}")
+        # Log loaded env vars, masking password
+        masked_env_params = {k: (v if k != 'password' else '********') for k, v in self.pg_params.items()}
+        logger.info(f"PgVectorStorage: Loaded PostgreSQL params from environment: {masked_env_params}") # Enhanced log
+        if not self.pg_params.get("password"):
+            logger.warning("PgVectorStorage: DB_PASSWORD environment variable is not set or is empty.")
+
 
     def close_db_connection(self) -> None:
         """
@@ -357,77 +368,152 @@ class PgVectorStorage:
         finally:
             if conn and not conn.closed:
                 conn.close()
+        return True # Assuming success if no exceptions
 
-    def get_embedding(self, vector_id: str) -> Optional[np.ndarray]:
-        """
-        Retrieves a single embedding by its vector_id.
-
-        Args:
-            vector_id: The UUID of the vector.
-
-        Returns:
-            A numpy array of the embedding, or None if not found or error.
-        """
+    def list_databases(self) -> List[str]:
+        """Lists all non-template databases."""
         conn = self._get_connection()
         if not conn:
-            return None
+            logger.error("Cannot list databases, no connection.")
+            return []
         
+        databases = []
         try:
             with conn.cursor() as cur:
-                select_query = sql.SQL("SELECT embedding FROM {table} WHERE vector_id = %s;").format(
-                    table=sql.Identifier(self.table_name)
-                )
-                cur.execute(select_query, (vector_id,))
-                result = cur.fetchone()
-                if result:
-                    # Embedding is returned as a list from pgvector
-                    return np.array(result[0])
-                else:
-                    logger.info(f"Embedding not found for vector_id: {vector_id}")
-                    return None
+                cur.execute("SELECT datname FROM pg_database WHERE datistemplate = false;")
+                rows = cur.fetchall()
+                databases = [row[0] for row in rows]
+            logger.info(f"Found databases: {databases}")
         except psycopg2.Error as e:
-            logger.error(f"Error retrieving embedding for vector_id {vector_id}: {e}")
-            return None
+            logger.error(f"Error listing databases: {e}")
+            if conn and not conn.closed:
+                try: conn.rollback()
+                except psycopg2.Error as rb_error: logger.error(f"Rollback failed: {rb_error}")
         finally:
             if conn and not conn.closed:
                 conn.close()
+        return databases
 
-    def delete_embedding(self, vector_id: str) -> bool:
-        """
-        Deletes an embedding by its vector_id.
-
-        Args:
-            vector_id: The UUID of the vector to delete.
-
-        Returns:
-            True if deletion was successful, False otherwise.
-        """
+    def list_tables(self) -> List[str]:
+        """Lists all tables in the current database (excluding system tables)."""
         conn = self._get_connection()
         if not conn:
-            return False
+            logger.error("Cannot list tables, no connection.")
+            return []
 
+        tables = []
         try:
             with conn.cursor() as cur:
-                delete_query = sql.SQL("DELETE FROM {table} WHERE vector_id = %s;").format(
-                    table=sql.Identifier(self.table_name)
-                )
-                cur.execute(delete_query, (vector_id,))
-                deleted_count = cur.rowcount
-            conn.commit()
-            if deleted_count > 0:
-                logger.info(f"Successfully deleted embedding for vector_id: {vector_id}")
-                return True
-            else:
-                logger.info(f"No embedding found to delete for vector_id: {vector_id}")
-                return False
+                cur.execute("""
+                    SELECT tablename 
+                    FROM pg_catalog.pg_tables 
+                    WHERE schemaname NOT IN ('pg_catalog', 'information_schema');
+                """)
+                rows = cur.fetchall()
+                tables = [row[0] for row in rows]
+            logger.info(f"Found tables in current database: {tables}")
         except psycopg2.Error as e:
-            logger.error(f"Error deleting embedding for vector_id {vector_id}: {e}")
-            if conn:
-                conn.rollback()
-            return False
+            logger.error(f"Error listing tables: {e}")
+            if conn and not conn.closed:
+                try: conn.rollback()
+                except psycopg2.Error as rb_error: logger.error(f"Rollback failed: {rb_error}")
         finally:
             if conn and not conn.closed:
                 conn.close()
+        return tables
+
+    def execute_select_query(self, query: str) -> Tuple[Optional[List[str]], Optional[List[Tuple[Any, ...]]], Optional[str]]:
+        """
+        Executes a given SELECT SQL query and returns the results.
+        Performs a basic check to ensure only SELECT queries are run.
+
+        Args:
+            query: The SELECT SQL query string.
+
+        Returns:
+            A tuple containing:
+            - List of column names (List[str]) or None if error or no columns.
+            - List of result rows (List[Tuple[Any, ...]]) or None if error.
+            - Error message (str) if an error occurred, otherwise None.
+        """
+        if not query.strip().upper().startswith("SELECT"):
+            logger.warning(f"Attempt to execute non-SELECT query blocked: {query[:100]}...")
+            return None, None, "Only SELECT queries are allowed."
+
+        conn = self._get_connection()
+        if not conn:
+            logger.error("Cannot execute query, no database connection.")
+            return None, None, "Database connection not available."
+
+        results: Optional[List[Tuple[Any, ...]]] = None
+        column_names: Optional[List[str]] = None
+        error_message: Optional[str] = None
+
+        try:
+            # It's generally safer to use a new cursor for each query
+            # and ensure the connection is in a good state.
+            # If the connection was left in a failed transaction state, new queries might fail.
+            # Resetting the connection state if it's in a transaction block that failed.
+            if conn.status == psycopg2.extensions.STATUS_IN_TRANSACTION and conn.get_transaction_status() == psycopg2.extensions.TRANSACTION_STATUS_INERROR:
+                conn.rollback() # or conn.reset() if appropriate, rollback is safer.
+                logger.warning("Connection was in an error transaction state, rolled back.")
+
+
+            with conn.cursor() as cur:
+                logger.info(f"Executing SELECT query: {query[:200]}...") # Log a snippet
+                cur.execute(query)
+                
+                if cur.description: # Check if the query returned columns (e.g., not for 'SELECT 1' where it's simple)
+                    column_names = [desc[0] for desc in cur.description]
+                    results = cur.fetchall()
+                    logger.info(f"Query executed successfully. Columns: {column_names}, Rows fetched: {len(results)}")
+                else: # Query might be valid but not return a typical rowset (e.g. 'SELECT 1' or a DDL in a string)
+                    # This case might need refinement based on expected SELECT query types.
+                    # For now, assume if no description, it's not a row-returning SELECT in the way we expect.
+                    logger.info("Query executed but did not return a rowset with descriptions (e.g., simple expression or non-row-returning).")
+                    # If it was a SELECT that should return rows but didn't, results will be empty list by fetchall.
+                    # If it was something like `SELECT pg_sleep(1)`, fetchall might hang or act unexpectedly if not handled.
+                    # For simplicity, if cur.description is None, we'll assume no columns/rows in the expected format.
+                    column_names = []
+                    results = []
+
+
+            # No commit needed for SELECT queries unless they call functions with side effects
+            # that require a commit, which is not typical for a 'read-only' query method.
+        except psycopg2.Error as e:
+            logger.error(f"Error executing SELECT query '{query[:100]}...': {e}")
+            error_message = str(e)
+            if conn and not conn.closed: # Ensure connection is available for rollback
+                try:
+                    conn.rollback() # Rollback any transaction that might have been started implicitly or explicitly
+                except psycopg2.Error as rb_error:
+                    logger.error(f"Rollback failed after query error: {rb_error}")
+        except Exception as e: # Catch any other unexpected errors
+            logger.error(f"An unexpected error occurred during query execution '{query[:100]}...': {e}", exc_info=True)
+            error_message = f"An unexpected server error occurred: {str(e)}"
+            # No rollback here as the connection state is unknown for non-psycopg2 errors.
+        finally:
+            if conn and not conn.closed:
+                # It's important not to close the connection if it's managed by a pool
+                # or if it's intended to be persistent across multiple calls in a session.
+                # For this class structure, where _get_connection can return a persistent conn,
+                # we should close it here if it was opened by this method, or manage it carefully.
+                # Given the current _get_connection, it reuses self.pg_conn.
+                # Let's assume for now that connections are managed per-operation or per-request.
+                # If this method opened it (or it was closed before), it should close it.
+                # However, the current _get_connection logic reuses self.pg_conn.
+                # For safety in a request-response cycle, connections are often closed.
+                # But if this is part of a larger transaction or session, it shouldn't be.
+                # The close_db_connection method is available for explicit closing.
+                # For now, let's keep the connection open if it was already open,
+                # consistent with other methods like list_databases.
+                # If a connection was established *by this method* because self.pg_conn was None/closed,
+                # it might be an argument for closing it here.
+                # This is a common complexity point in such classes.
+                # For now, we will NOT close it here, relying on explicit close_db_connection() or app shutdown.
+                pass
+
+        return column_names, results, error_message
 
     def find_similar_embeddings(
         self,

@@ -8,7 +8,7 @@ import logging
 
 from src.api.energy_query_api import router as energy_router
 from src.api.embedding_api import create_embedding_router # Import the function
-from src.api.pgvector_query_api import app as pgvector_router # Assuming the FastAPI app instance is named \'app\'
+from src.api.pgvector_query_api import router as pgvector_api_router 
 
 from src.config.env_manager import load_environment
 
@@ -38,7 +38,7 @@ app.add_middleware(
 # Include routers
 app.include_router(energy_router, prefix="/energy", tags=["Energy Queries"])
 app.include_router(create_embedding_router(), prefix="/embeddings", tags=["Embedding Operations"]) # Call the function here
-app.mount("/pgvector", pgvector_router, name="PgVector Operations") # Use app.mount for FastAPI sub-applications
+app.include_router(pgvector_api_router, prefix="/pgvector", tags=["PgVector Operations"]) 
 
 
 # Add a simple root endpoint
