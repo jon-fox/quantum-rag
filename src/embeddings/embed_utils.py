@@ -413,43 +413,42 @@ def efficiency_aware_embedding(
     return combined_embedding
 
 
-def save_embeddings(
-    items: List[Dict[str, Any]], 
-    embeddings: np.ndarray, 
-    filename: str
-) -> None:
-    """Save embeddings and items to a file
+# def save_embeddings(
+#     items: List[Dict[str, Any]], 
+#     embeddings: np.ndarray, 
+#     filename: str
+# ) -> None:
+#     """Save embeddings and items to a file
     
-    Args:
-        items: List of energy data dictionaries
-        embeddings: Array of embeddings
-        filename: Path to save the file
-    """
-    data = {
-        "items": items,
-        "embeddings": embeddings.tolist()
-    }
+#     Args:
+#         items: List of energy data dictionaries
+#         embeddings: Array of embeddings
+#         filename: Path to save the file
+#     """
+#     data = {
+#         "items": items,
+#         "embeddings": embeddings.tolist()
+#     }
     
-    with open(filename, 'w') as f:
-        json.dump(data, f)
+#     with open(filename, 'w') as f:
+#         json.dump(data, f)
     
-    logger.info(f"Saved {len(items)} embeddings to {filename}")
+#     logger.info(f"Saved {len(items)} embeddings to {filename}")
 
-
-def load_embeddings(filename: str) -> Tuple[List[Dict[str, Any]], np.ndarray]:
-    """Load embeddings and items from a file
+# def load_embeddings(filename: str) -> Tuple[List[Dict[str, Any]], np.ndarray]:
+#     """Load embeddings and items from a file
     
-    Args:
-        filename: Path to load the file from
+#     Args:
+#         filename: Path to load the file from
         
-    Returns:
-        Tuple of (items, embeddings)
-    """
-    with open(filename, 'r') as f:
-        data = json.load(f)
+#     Returns:
+#         Tuple of (items, embeddings)
+#     """
+#     with open(filename, 'r') as f:
+#         data = json.load(f)
     
-    items = data["items"]
-    embeddings = np.array(data["embeddings"])
+#     items = data["items"]
+#     embeddings = np.array(data["embeddings"])
     
-    logger.info(f"Loaded {len(items)} embeddings from {filename}")
-    return items, embeddings
+#     logger.info(f"Loaded {len(items)} embeddings from {filename}")
+#     return items, embeddings

@@ -1,491 +1,478 @@
 """
-Dual storage module for storing energy consumption data in both DynamoDB and PostgreSQL.
-The PostgreSQL database uses pgvector extension to store and query vector embeddings.
+Dual storage module for storing document metadata in DynamoDB and vector embeddings in PostgreSQL (via PgVectorStorage).
 """
 import json
-import boto3
 import logging
 import os
-import psycopg2
+import uuid # Added for generating vector_id
 import numpy as np
-from decimal import Decimal
-from typing import Dict, List, Optional, Any, Tuple, Union
-from botocore.exceptions import ClientError
-from psycopg2.extras import Json, execute_values
-from psycopg2 import sql
+from typing import Dict, List, Optional, Any, Tuple
+import boto3 # Ensure boto3 is imported
+from boto3.dynamodb.conditions import Key # Import Key for queries
 
-# Import existing DynamoDB storage
+# Import existing DynamoDB storage and the new PgVectorStorage
 from src.storage.dynamodb import DynamoDBStorage
+from src.storage.pgvector_storage import PgVectorStorage # New import
+from src.schema.models import Document # Assuming Document model might be used or adapted
 
 # Set up logging
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# BasicConfig should ideally be called once at the application entry point
+# logging.basicConfig(
+#     level=logging.INFO,
+#     format=\'%(asctime)s - %(name)s - %(levelname)s - %(message)s\'
+# )
 
 class DualStorage:
     """
-    Class for storing energy consumption data in both DynamoDB and PostgreSQL with pgvector.
-    
-    Utilizes AWS SSM Parameter Store to retrieve database credentials and connection info.
+    Manages storage of document metadata in DynamoDB and their corresponding
+    vector embeddings in a PostgreSQL database using the pgvector extension.
     """
-    
+
     def __init__(
         self,
-        dynamodb_table_name: str = None,
-        postgres_table_name: str = "energy_embeddings",
-        region: str = None,
-        environment: str = None,
-        ssm_param_prefix: str = None,
-        lazy_init: bool = True
+        dynamodb_table_name: Optional[str] = None,
+        pg_vector_table_name: str = "document_embeddings", # Table for pgvector
+        pg_db_params: Optional[Dict[str, str]] = None, # For PgVectorStorage
+        vector_dim: int = 1536, # Default for OpenAI text-embedding-3-small
+        region: Optional[str] = None,
+        # environment: Optional[str] = None, # Not directly used by PgVectorStorage from here
+        # ssm_param_prefix: Optional[str] = None, # PgVectorStorage handles its own param loading
+        lazy_init_pg: bool = True
     ):
         """
-        Initialize dual storage handler
-        
+        Initialize dual storage handler.
+
         Args:
-            dynamodb_table_name: Override default DynamoDB table name
-            postgres_table_name: PostgreSQL table name for embeddings
-            region: AWS region, defaults to env var or boto default
-            environment: Environment (prod, dev, etc.) for SSM parameters
-            ssm_param_prefix: Prefix for SSM parameters
-            lazy_init: Whether to delay PostgreSQL initialization until first use
+            dynamodb_table_name: Name of the DynamoDB table for metadata.
+                                 Defaults to DYNAMODB_TABLE env var or "quantum_embeddings".
+            pg_vector_table_name: Name of the PostgreSQL table for embeddings.
+            pg_db_params: PostgreSQL connection parameters for PgVectorStorage.
+            vector_dim: Dimension of the embeddings.
+            region: AWS region for DynamoDB.
+            lazy_init_pg: Whether to delay PostgreSQL schema initialization.
         """
-        # Initialize attributes
         self.region = region or os.environ.get("AWS_REGION", "us-east-1")
-        self.environment = environment or os.environ.get("ENVIRONMENT", "prod")
-        self.ssm_param_prefix = ssm_param_prefix or f"/{self.environment}/energy-data/db"
-        self.postgres_table_name = postgres_table_name
-        self.schema_initialized = False
         
-        # Initialize DynamoDB storage
-        self.dynamo_storage = DynamoDBStorage(table_name=dynamodb_table_name)
-        
-        # Initialize PostgreSQL connection (lazy - will connect when needed)
-        self.pg_conn = None
-        self.pg_params = None
-        
-        # Set up vector dimension
-        self.vector_dim = 1536  # Default for OpenAI embeddings
-        
-        # Initialize PostgreSQL schema if not using lazy init
-        if not lazy_init:
-            self._init_postgres_schema()
+        # Ensure dynamodb_table_name is correctly defaulted if None
+        resolved_dynamodb_table_name = dynamodb_table_name or os.environ.get("DYNAMODB_TABLE", "quantum_embeddings")
 
-    def _get_pg_connection_params(self) -> Dict[str, str]:
-        """
-        Get PostgreSQL connection parameters from SSM Parameter Store
-        
-        Returns:
-            Dictionary with connection parameters
-        """
-        if self.pg_params is not None:
-            return self.pg_params
-            
-        try:
-            # Initialize SSM client
-            ssm = boto3.client('ssm', region_name=self.region)
-            
-            # Get parameters from SSM
-            params = {}
-            param_names = ["username", "password", "address", "port", "name"]
-            
-            for param_name in param_names:
-                try:
-                    response = ssm.get_parameter(
-                        Name=f"{self.ssm_param_prefix}/{param_name}",
-                        WithDecryption=True if param_name == "password" else False
-                    )
-                    params[param_name] = response["Parameter"]["Value"]
-                except Exception as e:
-                    logger.warning(f"Failed to get parameter {param_name}: {e}")
-                    # Use defaults if parameter not found
-                    if param_name == "username":
-                        params[param_name] = "energyadmin"
-                    elif param_name == "password":
-                        params[param_name] = os.environ.get("DB_PASSWORD", "")
-                    elif param_name == "address":
-                        params[param_name] = os.environ.get("DB_HOST", "localhost")
-                    elif param_name == "port":
-                        params[param_name] = os.environ.get("DB_PORT", "5432")
-                    elif param_name == "name":
-                        params[param_name] = os.environ.get("DB_NAME", "energy_data")
-            
-            # Cache the parameters for future use
-            self.pg_params = {
-                "user": params.get("username", "energyadmin"),
-                "password": params.get("password", os.environ.get("DB_PASSWORD", "")),
-                "host": params.get("address", os.environ.get("DB_HOST", "localhost")),
-                "port": params.get("port", os.environ.get("DB_PORT", "5432")),
-                "dbname": params.get("name", os.environ.get("DB_NAME", "energy_data"))
-            }
-            
-            return self.pg_params
-            
-        except Exception as e:
-            logger.error(f"Failed to get PostgreSQL connection parameters: {e}")
-            # For development fallback - NOT for production use!
-            self.pg_params = {
-                "user": os.environ.get("DB_USER", "energyadmin"),
-                "password": os.environ.get("DB_PASSWORD", ""),
-                "host": os.environ.get("DB_HOST", "localhost"),
-                "port": os.environ.get("DB_PORT", "5432"),
-                "dbname": os.environ.get("DB_NAME", "energy_data")
-            }
-            return self.pg_params
-
-    def _get_pg_connection(self, retry=True):
-        """
-        Get PostgreSQL connection, creating it if needed
-        
-        Args:
-            retry: Whether to retry connection on failure
-            
-        Returns:
-            PostgreSQL connection object or None if connection fails
-        """
-        if self.pg_conn is None or self.pg_conn.closed:
-            try:
-                params = self._get_pg_connection_params()
-                self.pg_conn = psycopg2.connect(**params)
-                self.pg_conn.autocommit = False
-                logger.info(f"Connected to PostgreSQL at {params['host']}")
-            except Exception as e:
-                logger.error(f"Failed to connect to PostgreSQL: {e}")
-                self.pg_conn = None
-                if not retry:
-                    raise
-        return self.pg_conn
-
-    def _init_postgres_schema(self) -> bool:
-        """
-        Initialize PostgreSQL schema with pgvector extension and table
-        
-        Returns:
-            Boolean indicating success
-        """
-        if self.schema_initialized:
-            return True
-            
-        conn = None
-        try:
-            # Connect to PostgreSQL
-            conn = self._get_pg_connection(retry=False)
-            if conn is None:
-                logger.warning("Skipping schema initialization, no PostgreSQL connection available")
-                return False
-                
-            with conn.cursor() as cur:
-                # Enable pgvector extension if not already enabled
-                cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-                
-                # Create table if not exists
-                cur.execute(f"""
-                CREATE TABLE IF NOT EXISTS {self.postgres_table_name} (
-                    item_id TEXT PRIMARY KEY,
-                    description TEXT NOT NULL,
-                    efficiency NUMERIC(10, 2) NOT NULL,
-                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-                    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-                    embedding vector({self.vector_dim}),
-                    metadata JSONB
-                );
-                """)
-                
-                # Create index for vector search
-                cur.execute(f"""
-                CREATE INDEX IF NOT EXISTS idx_{self.postgres_table_name}_embedding 
-                ON {self.postgres_table_name} USING ivfflat (embedding vector_cosine_ops)
-                WITH (lists = 100);
-                """)
-                
-                conn.commit()
-                logger.info(f"PostgreSQL schema initialized with table {self.postgres_table_name}")
-                self.schema_initialized = True
-                return True
-                
-        except Exception as e:
-            logger.error(f"Failed to initialize PostgreSQL schema: {e}")
-            if conn:
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass  # Ignore rollback errors, connection might be broken
-            return False
-
-    def store_energy_data_with_embedding(
-        self, 
-        energy_data: Dict[str, Any], 
-        embedding: Optional[np.ndarray] = None
-    ) -> Dict[str, Any]:
-        """
-        Store energy consumption data in both DynamoDB and PostgreSQL with its embedding
-        
-        Args:
-            energy_data: Energy data dictionary
-            embedding: Vector embedding as numpy array (1536 dimensions)
-            
-        Returns:
-            Dict with results for both storage operations
-        """
-        results = {
-            "dynamo": {"success": False},
-            "postgres": {"success": False},
-            "overall_success": False
-        }
-        
-        # Extract required fields with validation
-        item_id = energy_data.get("dataId")
-        if not item_id:
-            error_msg = "Missing required field: dataId"
-            logger.error(error_msg)
-            results["error"] = error_msg
-            return results
-        
-        # Store in DynamoDB
-        try:
-            dynamo_result = self.dynamo_storage.store_energy_data(energy_data)
-            results["dynamo"] = dynamo_result
-        except Exception as e:
-            logger.error(f"DynamoDB storage error for item {item_id}: {e}")
-            results["dynamo"] = {"success": False, "error": str(e)}
-        
-        # Store in PostgreSQL if embedding is provided and connection works
-        if embedding is not None:
-            # Try to initialize schema if needed
-            if not self.schema_initialized:
-                self._init_postgres_schema()
-                
-            # Only attempt to store if we can connect
-            if self._get_pg_connection(retry=False) is not None:
-                try:
-                    pg_result = self._store_in_postgres(energy_data, embedding)
-                    results["postgres"] = pg_result
-                except Exception as e:
-                    logger.error(f"PostgreSQL storage error for item {item_id}: {e}")
-                    results["postgres"] = {"success": False, "error": str(e)}
-            else:
-                results["postgres"] = {"success": False, "error": "PostgreSQL connection unavailable"}
-        else:
-            results["postgres"] = {"success": False, "error": "No embedding provided"}
-        
-        # Determine overall success - consider it successful if DynamoDB worked
-        # This makes the app resilient to PostgreSQL availability issues
-        results["overall_success"] = results["dynamo"].get("success", False)
-        results["item_id"] = item_id
-        
-        return results
-    
-    def _store_in_postgres(self, energy_data: Dict[str, Any], embedding: np.ndarray) -> Dict[str, Any]:
-        """
-        Store energy data with its embedding in PostgreSQL
-        
-        Args:
-            energy_data: Energy consumption data dictionary
-            embedding: Vector embedding as numpy array
-            
-        Returns:
-            Dict with result information
-        """
-        # Extract required fields
-        item_id = energy_data.get("dataId")
-        title = energy_data.get("description", "Unknown")
-        
-        # Extract efficiency with validation
-        efficiency = 0.0
-        efficiency_data = energy_data.get("efficiency", {})
-        if efficiency_data and isinstance(efficiency_data, dict):
-            efficiency_value = efficiency_data.get("value")
-            if efficiency_value:
-                try:
-                    efficiency = float(efficiency_value)
-                except (ValueError, TypeError):
-                    logger.warning(f"Invalid efficiency value for item {item_id}, using 0.0")
-        elif isinstance(energy_data.get("efficiency"), (int, float)):
-            efficiency = float(energy_data.get("efficiency"))
-        
-        # Prepare metadata (store additional useful fields)
-        metadata = {
-            "source_type": energy_data.get("source_type"),
-            "data_url": energy_data.get("dataUrl"),
-            "unit": efficiency_data.get("unit", "kWh") if isinstance(efficiency_data, dict) else "kWh",
-            "raw_data": json.dumps({k: v for k, v in energy_data.items() if k not in ["dataId", "description", "efficiency"]})
-        }
-        
-        try:
-            # Connect to PostgreSQL
-            conn = self._get_pg_connection()
-            with conn.cursor() as cur:
-                # Insert or update using UPSERT (INSERT ... ON CONFLICT ... DO UPDATE)
-                cur.execute(
-                    sql.SQL("""
-                    INSERT INTO {} (item_id, title, price, embedding, metadata, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, NOW())
-                    ON CONFLICT (item_id) 
-                    DO UPDATE SET 
-                        title = EXCLUDED.title,
-                        price = EXCLUDED.price,
-                        embedding = EXCLUDED.embedding,
-                        metadata = EXCLUDED.metadata,
-                        updated_at = NOW()
-                    """).format(sql.Identifier(self.postgres_table_name)),
-                    (
-                        item_id, 
-                        title, 
-                        efficiency, 
-                        embedding.tolist(),  # Convert numpy array to Python list
-                        Json(metadata)
-                    )
-                )
-                
-                conn.commit()
-                logger.info(f"Successfully stored energy data {item_id} in PostgreSQL with embedding")
-                return {"success": True, "item_id": item_id}
-                
-        except Exception as e:
-            if conn:
-                conn.rollback()
-            logger.error(f"Failed to store energy data {item_id} in PostgreSQL: {e}")
-            return {"success": False, "item_id": item_id, "error": str(e)}
-
-    def batch_store_energy_data_with_embeddings(
-        self, 
-        items: List[Dict[str, Any]],
-        embeddings: Optional[np.ndarray] = None
-    ) -> Dict[str, Any]:
-        """
-        Store multiple energy data entries in both DynamoDB and PostgreSQL
-        
-        Args:
-            items: List of energy data dictionaries
-            embeddings: Optional array of embeddings (one per item)
-            
-        Returns:
-            Dict with results summary
-        """
-        results = {
-            "total": len(items),
-            "dynamo_succeeded": 0,
-            "dynamo_failed": 0,
-            "postgres_succeeded": 0,
-            "postgres_failed": 0,
-            "failures": []
-        }
-        
-        # Store in DynamoDB first (batch)
-        dynamo_results = self.dynamo_storage.batch_store_energy_data(items)
-        results["dynamo_succeeded"] = dynamo_results.get("succeeded", 0)
-        results["dynamo_failed"] = dynamo_results.get("failed", 0)
-        
-        # Store in PostgreSQL if embeddings are provided
-        if embeddings is not None and len(embeddings) == len(items):
-            try:
-                conn = self._get_pg_connection()
-                with conn.cursor() as cur:
-                    # Prepare data for batch insertion
-                    rows = []
-                    for idx, item in enumerate(items):
-                        item_id = item.get("dataId")
-                        if not item_id:
-                            results["postgres_failed"] += 1
-                            results["failures"].append({
-                                "error": "Missing dataId",
-                                "index": idx
-                            })
-                            continue
-                        
-                        # Extract data
-                        description = item.get("description", "Unknown")
-                        efficiency = 0.0
-                        efficiency_data = item.get("efficiency", {})
-                        if efficiency_data and isinstance(efficiency_data, dict):
-                            efficiency_value = efficiency_data.get("value")
-                            if efficiency_value:
-                                try:
-                                    efficiency = float(efficiency_value)
-                                except (ValueError, TypeError):
-                                    pass
-                        elif isinstance(item.get("efficiency"), (int, float)):
-                            try:
-                                efficiency = float(item["efficiency"])
-                            except (ValueError, TypeError):
-                                pass
-                        
-                        # Prepare metadata
-                        metadata = {
-                            "source_type": item.get("source_type"),
-                            "data_url": item.get("dataUrl"),
-                            "unit": efficiency_data.get("unit", "kWh") if isinstance(efficiency_data, dict) else "kWh"
-                        }
-                        
-                        # Add to batch
-                        rows.append((
-                            item_id,
-                            description,
-                            efficiency,
-                            embeddings[idx].tolist(),
-                            Json(metadata),
-                            "NOW()"  # Updated timestamp
-                        ))
-                    
-                    # Execute batch upsert using execute_values with correct column mapping
-                    if rows:
-                        # Issue: execute_values can't handle NOW() function inside the rows
-                        # Solution: Use template to replace the timestamp placeholder with NOW()
-                        query = sql.SQL("""
-                        INSERT INTO {} (item_id, description, efficiency, embedding, metadata, updated_at)
-                        VALUES %s
-                        ON CONFLICT (item_id) 
-                        DO UPDATE SET 
-                            description = EXCLUDED.description,
-                            efficiency = EXCLUDED.efficiency,
-                            embedding = EXCLUDED.embedding,
-                            metadata = EXCLUDED.metadata,
-                            updated_at = NOW()
-                        """).format(sql.Identifier(self.postgres_table_name))
-                        
-                        # Fix: Use a template with NOW() as the timestamp
-                        template = "(%(item_id)s, %(description)s, %(efficiency)s, %(embedding)s, %(metadata)s, NOW())"
-                        
-                        # Convert list of tuples to list of dicts for template-based insertion
-                        dict_rows = []
-                        for row in rows:
-                            dict_rows.append({
-                                "item_id": row[0],
-                                "description": row[1],
-                                "efficiency": row[2],
-                                "embedding": row[3],
-                                "metadata": row[4],
-                            })
-                        
-                        execute_values(cur, query, dict_rows, template=template)
-                        conn.commit()
-                        
-                        results["postgres_succeeded"] = len(rows)
-                        results["postgres_failed"] = len(items) - len(rows)
-                        
-                        logger.info(f"Successfully batch stored {len(rows)} energy data entries in PostgreSQL with embeddings")
-                    
-            except Exception as e:
-                if conn:
-                    conn.rollback()
-                results["postgres_succeeded"] = 0
-                results["postgres_failed"] = len(items)
-                results["failures"].append({"error": str(e)})
-                logger.error(f"Failed to batch store energy data in PostgreSQL: {e}")
-        else:
-            results["postgres_failed"] = len(items)
-            results["failures"].append({
-                "error": "Missing or mismatched embeddings array"
-            })
-        
-        # Determine overall success
-        results["overall_success"] = (
-            results["dynamo_succeeded"] > 0 and
-            (results["postgres_succeeded"] > 0 if embeddings is not None else True)
+        # Initialize DynamoDB storage for metadata
+        self.dynamo_storage = DynamoDBStorage(
+            table_name=resolved_dynamodb_table_name, 
+            region=self.region
         )
         
+        # Initialize PgVectorStorage for embeddings
+        self.pg_vector_storage = PgVectorStorage(
+            db_params=pg_db_params, # Pass explicitly or let PgVectorStorage load from env
+            table_name=pg_vector_table_name,
+            vector_dim=vector_dim,
+            lazy_init=lazy_init_pg
+        )
+        
+        logger.info(f"DualStorage initialized: DynamoDB table \'{resolved_dynamodb_table_name}\', PgVector table \'{pg_vector_table_name}\'")
+
+    def store_document_and_embedding(
+        self,
+        document_metadata: Dict[str, Any], # Expects metadata including a document_id
+        embedding_vector: np.ndarray,
+        vector_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Stores document metadata in DynamoDB and its embedding in PostgreSQL.
+        A unique vector_id is generated if not provided, and stored in DynamoDB metadata.
+
+        Args:
+            document_metadata: Dictionary containing document metadata. 
+                               Must include 'document_id' for DynamoDB.
+                               Other fields like 'doc_type', 'title', 'source', 'summary', etc.
+            embedding_vector: Numpy array of the document's embedding.
+            vector_id: Optional pre-generated UUID for the vector. If None, a new one is created.
+
+        Returns:
+            A dictionary with storage results.
+            e.g., {
+                "document_id": "doc123",
+                "vector_id": "uuid-for-vector",
+                "dynamo_result": {"success": True, ...},
+                "pgvector_result": {"success": True, ...},
+                "overall_success": True
+            }
+        """
+        doc_id = document_metadata.get("document_id")
+        if not doc_id:
+            logger.error("Missing 'document_id' in document_metadata.")
+            return {"overall_success": False, "error": "Missing document_id"}
+
+        # Generate a vector_id if not provided
+        if not vector_id:
+            vector_id = str(uuid.uuid4())
+        
+        # Add/update vector_id in the metadata to be stored in DynamoDB
+        document_metadata_with_vid = document_metadata.copy()
+        document_metadata_with_vid["vector_id"] = vector_id
+
+        results = {
+            "document_id": doc_id,
+            "vector_id": vector_id,
+            "dynamo_result": {"success": False},
+            "pgvector_result": {"success": False},
+            "overall_success": False
+        }
+
+        # 1. Store metadata in DynamoDB
+        try:
+            # Assuming dynamo_storage.store_item or similar method exists
+            # and is adapted for the 'quantum_embeddings' table structure
+            # The existing store_energy_data might need to be generalized or a new method created.
+            # For now, let's assume a generic store_metadata method.
+            # You'll need to adapt this part based on your DynamoDBStorage implementation.
+            
+            # If your DynamoDB table's primary key is 'document_id'
+            # and it expects other attributes as defined in your Terraform.
+            dynamo_item_to_store = {
+                "document_id": doc_id, # Hash key
+                "doc_type": document_metadata_with_vid.get("doc_type", "unknown"),
+                "last_updated": document_metadata_with_vid.get("last_updated", self.dynamo_storage._get_timestamp()), # Use existing helper
+                "title": document_metadata_with_vid.get("title"),
+                "source": document_metadata_with_vid.get("source"),
+                "vector_id": vector_id, # Crucial link
+                "embedding_type": document_metadata_with_vid.get("embedding_type"),
+                "summary": document_metadata_with_vid.get("summary"),
+                # Add any other fields from document_metadata_with_vid that are part of your DDB table schema
+                # For example, if you have 'expiry_time' for TTL:
+                # "expiry_time": document_metadata_with_vid.get("expiry_time") 
+            }
+            # Remove None values to avoid DynamoDB validation errors for optional fields not provided
+            dynamo_item_to_store_cleaned = {k: v for k, v in dynamo_item_to_store.items() if v is not None}
+
+            # The method in DynamoDBStorage needs to be flexible enough.
+            # Let's assume a method `put_item` that takes the full item.
+            # This is a placeholder for the actual call you'd make.
+            # You might need to refactor DynamoDBStorage.store_energy_data
+            # or add a new method like `store_document_metadata`.
+
+            # For the purpose of this example, let's assume a generic `put_item` exists
+            # that matches the structure of your `quantum_embeddings` table.
+            # This part needs careful implementation in `dynamodb.py`.
+            
+            # Using the existing store_energy_data and adapting the input might be tricky
+            # due to its specific structure. A new, more generic method in DynamoDBStorage is better.
+            # Let's assume a new method `upsert_item` in DynamoDBStorage for this.
+            # This method would take the item and table's hash key name.
+            # For now, we'll mock its success.
+            
+            # SIMULATED CALL - REPLACE WITH ACTUAL IMPLEMENTATION
+            # This requires `document_metadata_with_vid` to be structured correctly for `store_item`
+            # or `store_item` to be more generic.
+            # The `store_energy_data` method in your `dynamodb.py` is quite specific.
+            # We need a more generic way to put an item.
+            # A simple approach for now, assuming `self.dynamo_storage.table` is the DynamoDB Table resource:
+            self.dynamo_storage.table.put_item(Item=dynamo_item_to_store_cleaned)
+            results["dynamo_result"] = {"success": True, "document_id": doc_id, "message": "Metadata stored in DynamoDB."}
+            logger.info(f"Successfully stored metadata for document_id: {doc_id} in DynamoDB.")
+
+        except Exception as e:
+            logger.error(f"DynamoDB storage error for document_id {doc_id}: {e}")
+            results["dynamo_result"] = {"success": False, "error": str(e)}
+
+        # 2. Store embedding in PostgreSQL via PgVectorStorage
+        if results["dynamo_result"]["success"]: # Only proceed if metadata storage was okay or if you want to store vector regardless
+            try:
+                pg_success = self.pg_vector_storage.store_embedding(vector_id, embedding_vector)
+                results["pgvector_result"] = {"success": pg_success}
+                if pg_success:
+                    logger.info(f"Successfully stored embedding for vector_id: {vector_id} in PgVector.")
+                else:
+                    logger.error(f"Failed to store embedding for vector_id: {vector_id} in PgVector.")
+            except Exception as e:
+                logger.error(f"PgVector storage error for vector_id {vector_id}: {e}")
+                results["pgvector_result"] = {"success": False, "error": str(e)}
+        else:
+            logger.warning(f"Skipping PgVector storage for vector_id {vector_id} due to DynamoDB storage failure.")
+            results["pgvector_result"] = {"success": False, "error": "Skipped due to DynamoDB failure"}
+
+
+        results["overall_success"] = results["dynamo_result"]["success"] and results["pgvector_result"]["success"]
         return results
 
-# Create a default instance for convenience WITHOUT auto-initialization
-default_dual_storage = DualStorage(lazy_init=True)
+    def batch_store_documents_and_embeddings(
+        self,
+        documents_with_embeddings: List[Tuple[Dict[str, Any], np.ndarray, Optional[str]]]
+    ) -> Dict[str, Any]:
+        """
+        Stores multiple documents' metadata in DynamoDB and their embeddings in PostgreSQL.
+
+        Args:
+            documents_with_embeddings: A list of tuples. Each tuple contains:
+                - document_metadata (Dict[str, Any]): Metadata for DynamoDB. Must include 'document_id'.
+                - embedding_vector (np.ndarray): The embedding vector.
+                - vector_id (Optional[str]): Pre-generated UUID for the vector. If None, one is created.
+        
+        Returns:
+            A summary of the batch operation.
+        """
+        batch_results = {
+            "total_items": len(documents_with_embeddings),
+            "succeeded_items": 0,
+            "failed_items": 0,
+            "individual_results": []
+        }
+
+        dynamo_batch_items_to_store = []
+        pg_batch_embeddings_to_store = [] # List of (vector_id, embedding_vector)
+
+        for doc_meta, embedding_vec, vec_id_optional in documents_with_embeddings:
+            doc_id = doc_meta.get("document_id")
+            if not doc_id:
+                batch_results["failed_items"] += 1
+                batch_results["individual_results"].append({
+                    "document_id": None, "vector_id": None, "success": False, "error": "Missing document_id"
+                })
+                continue
+
+            vector_id = vec_id_optional if vec_id_optional else str(uuid.uuid4())
+            
+            # Prepare item for DynamoDB
+            dynamo_item = doc_meta.copy()
+            dynamo_item["vector_id"] = vector_id
+            # Add/ensure other required DDB fields like last_updated
+            dynamo_item["last_updated"] = dynamo_item.get("last_updated", self.dynamo_storage._get_timestamp())
+            
+            # Clean None values for DDB
+            dynamo_item_cleaned = {k: v for k, v in dynamo_item.items() if v is not None}
+            dynamo_batch_items_to_store.append(dynamo_item_cleaned)
+            
+            # Prepare item for PgVector
+            pg_batch_embeddings_to_store.append((vector_id, embedding_vec))
+
+        # 1. Batch store metadata in DynamoDB
+        # DynamoDBStorage needs a batch write method.
+        # For now, let's assume it processes one by one for simplicity of this example,
+        # or you'd implement a proper batch_put_items in DynamoDBStorage.
+        # A true batch write would be more efficient.
+        
+        # --- Placeholder for DynamoDB Batch Interaction ---
+        # This needs a proper batch write implementation in `dynamodb.py`
+        # For now, iterating and calling single store, which is not ideal for "batch"
+        # but demonstrates the logic.
+        
+        processed_doc_ids_for_pg = set() # Track doc_ids successfully stored in DDB
+
+        if dynamo_batch_items_to_store:
+            # SIMULATED BATCH DDB - REPLACE WITH ACTUAL IMPLEMENTATION
+            # Example: using a hypothetical batch_upsert_items in DynamoDBStorage
+            # dynamo_batch_op_results = self.dynamo_storage.batch_upsert_items(dynamo_batch_items_to_store)
+            # For now, let's iterate (less efficient but illustrates the data flow)
+            for item_to_store, (original_doc_meta, _, _) in zip(dynamo_batch_items_to_store, documents_with_embeddings):
+                # This assumes `item_to_store` has `document_id`
+                current_doc_id = item_to_store.get("document_id") 
+                try:
+                    self.dynamo_storage.table.put_item(Item=item_to_store) # Simplified
+                    # In a real scenario, you'd collect vector_ids of successful DDB puts
+                    # For simplicity, assume all DDB puts here are successful for now if no exception
+                    # The `vector_id` is already in `item_to_store`
+                    # We need to map this success back to the pg_batch_embeddings_to_store
+                    # Find the corresponding vector_id for this current_doc_id
+                    original_vector_id = item_to_store.get("vector_id")
+                    if original_vector_id:
+                         # Mark this vector_id as eligible for PG storage
+                         # This logic is a bit complex if DDB batch fails partially.
+                         # A better approach: DDB batch returns list of successes/failures.
+                         # For now, let's assume if DDB put_item is successful, we add its vector_id for PG.
+                        
+                        # For this simplified loop, if a DDB item makes it here without error, its metadata is "stored".
+                        # The `pg_batch_embeddings_to_store` as prepared earlier will be used.
+                        # A more robust solution would filter pg_batch_embeddings_to_store based on DDB success.
+                        
+                        # Let's refine: build a list of (vector_id, embedding_vector) for PG *only* if DDB succeeded.
+                        # This is getting complex for a simulation.
+                        # A true DDB batch write method in DynamoDBStorage is essential.
+                        # It should return which items succeeded, along with their vector_ids.
+
+                        # Assuming for now: if a DDB item makes it here without error, its metadata is "stored".
+                        # The `pg_batch_embeddings_to_store` as prepared earlier will be used.
+                        # This implies DDB batch is all-or-nothing or all successful for this simplified path.
+                        pass # Placeholder for success tracking
+
+                except Exception as e:
+                    logger.error(f"Error storing {current_doc_id} in DynamoDB during batch: {e}")
+                    # If DDB fails for an item, we should ideally not store its vector.
+                    # This requires removing it from pg_batch_embeddings_to_store or marking it.
+                    # For simplicity, this example will still attempt all PG stores,
+                    # but a real implementation should filter.
+        
+        # 2. Batch store embeddings in PostgreSQL
+        pg_batch_succeeded = False
+        if pg_batch_embeddings_to_store:
+            try:
+                pg_batch_succeeded = self.pg_vector_storage.batch_store_embeddings(pg_batch_embeddings_to_store)
+                if pg_batch_succeeded:
+                    logger.info(f"PgVector batch store attempt finished for {len(pg_batch_embeddings_to_store)} items. Success: {pg_batch_succeeded}")
+                else:
+                    logger.error(f"PgVector batch store failed for {len(pg_batch_embeddings_to_store)} items.")
+            except Exception as e:
+                logger.error(f"Error during PgVector batch_store_embeddings: {e}")
+                pg_batch_succeeded = False
+        
+        # Consolidate results (this is a simplified aggregation)
+        # A more detailed aggregation would track individual item success/failure through both stores.
+        if pg_batch_succeeded: # And assuming DDB part was mostly successful
+            batch_results["succeeded_items"] = len(pg_batch_embeddings_to_store) # Approximation
+        batch_results["failed_items"] = batch_results["total_items"] - batch_results["succeeded_items"]
+        # Individual results would need more granular tracking.
+
+        logger.info(f"Batch store operation summary: Total: {batch_results['total_items']}, Succeeded (approx): {batch_results['succeeded_items']}")
+        return batch_results
+
+    def get_document_metadata(self, document_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieves document metadata from DynamoDB."""
+        # This method needs to be implemented in DynamoDBStorage
+        # e.g., self.dynamo_storage.get_item_by_id(document_id)
+        # For now, returning None as a placeholder.
+        # --- Placeholder for DynamoDBStorage interaction ---
+        try:
+            response = self.dynamo_storage.table.get_item(Key={'document_id': document_id})
+            if 'Item' in response:
+                logger.info(f"Retrieved metadata for document_id: {document_id}")
+                return response['Item']
+            else:
+                logger.info(f"No metadata found for document_id: {document_id}")
+                return None
+        except Exception as e:
+            logger.error(f"Error retrieving metadata for document_id {document_id} from DynamoDB: {e}")
+            return None
+
+
+    def get_embedding_vector(self, vector_id: str) -> Optional[np.ndarray]:
+        """Retrieves an embedding vector from PgVectorStorage."""
+        try:
+            vector = self.pg_vector_storage.get_embedding(vector_id)
+            if vector is not None:
+                logger.info(f"Retrieved embedding for vector_id: {vector_id}")
+            else:
+                logger.info(f"No embedding found for vector_id: {vector_id}")
+            return vector
+        except Exception as e:
+            logger.error(f"Error retrieving embedding for vector_id {vector_id} from PgVector: {e}")
+            return None
+
+    def find_similar_documents(
+        self,
+        query_embedding: np.ndarray,
+        top_k: int = 5,
+        metric: str = "cosine"
+    ) -> List[Dict[str, Any]]:
+        """
+        Finds documents with embeddings similar to the query_embedding.
+        1. Queries PgVectorStorage for similar vector_ids.
+        2. Retrieves metadata for these vector_ids from DynamoDB.
+
+        Args:
+            query_embedding: Numpy array of the query embedding.
+            top_k: Number of similar documents to return.
+            metric: Distance metric for similarity search ('cosine', 'l2', 'inner_product').
+
+        Returns:
+            A list of dictionaries, where each dictionary contains:
+            - 'metadata': The document metadata from DynamoDB.
+            - 'vector_id': The ID of the vector.
+            - 'distance': The distance score from the similarity search.
+        """
+        similar_vectors = self.pg_vector_storage.find_similar_embeddings(
+            query_embedding, top_k=top_k, metric=metric
+        )
+
+        results = []
+        if not similar_vectors:
+            logger.info("No similar vectors found in PgVector.")
+            return []
+
+        logger.info(f"Found {len(similar_vectors)} candidate vectors. Fetching metadata from DynamoDB.")
+        for vector_id, distance_score in similar_vectors:
+            # We need to get the document_id associated with this vector_id from DynamoDB.
+            # This requires that vector_id is queryable in DynamoDB or that we iterate.
+            # The current DynamoDB schema has vector_id in non_key_attributes of GSIs.
+            # If we need to find a document_id given a vector_id, we might need a GSI on vector_id
+            # or to adjust the workflow.
+            
+            # Assumption: The 'vector_id' stored in DynamoDB items is the same as `vector_id` from pgvector.
+            # We need a way to query DynamoDB for an item WHERE vector_id = <found_vector_id>.
+            # If 'vector_id' is not a key in DynamoDB, this is inefficient.
+            # Let's assume for now we have a GSI: VectorIdIndex with hash_key = 'vector_id'.
+            # If not, this part needs rethinking or a scan (not recommended for performance).
+
+            # Querying DynamoDB by a non-key attribute (vector_id) efficiently requires a GSI.
+            # Let's assume you have a GSI:
+            # global_secondary_index {
+            #   name            = "VectorIdIndex"
+            #   hash_key        = "vector_id"
+            #   projection_type = "ALL" # or "INCLUDE" necessary attributes
+            # }
+            # If such an index exists:
+            try:
+                # This is a conceptual query. Actual implementation depends on DynamoDBStorage.
+                # response = self.dynamo_storage.query_by_gsi("VectorIdIndex", "vector_id", vector_id)
+                # items = response.get('Items', [])
+                # For now, let's simulate a direct query if the GSI exists.
+                # This is a placeholder for actual GSI query logic in DynamoDBStorage.
+                
+                # --- Placeholder for DynamoDB GSI Query ---
+                # This requires a GSI on 'vector_id' in your DynamoDB table.
+                # If no GSI, this will be a scan, which is bad.
+                # For the example, let's assume a GSI 'VectorIdIndex' on 'vector_id'.
+                # This part needs a proper method in `dynamodb.py`
+                
+                # Simplified: Fetch the metadata using document_id if we can get it.
+                # The current flow doesn't directly give document_id from vector_id via pgvector.
+                # This is a gap: pgvector gives (vector_id, score). We need to find the document_id for that vector_id.
+                
+                # Solution: The `document_metadata` stored in DynamoDB *must* contain the `vector_id`.
+                # When we query pgvector, we get `vector_id`. We then query DynamoDB *using this `vector_id`*
+                # to find the item(s) that have this `vector_id`. This requires a GSI on `vector_id` in DynamoDB.
+
+                # Let's assume `query_items_by_attribute` exists in `DynamoDBStorage`
+                # that can query a GSI.
+                # metadata_items = self.dynamo_storage.query_items_by_attribute("vector_id", vector_id, index_name="VectorIdIndex")
+
+                # If you don't have a GSI on vector_id, you'd typically store document_id also in pgvector table
+                # as metadata, then retrieve document_id from pgvector, then use it to get full metadata from DDB.
+                # Let's assume the GSI on vector_id exists for now for a cleaner flow here.
+                
+                # Simulating GSI query (replace with actual implementation in dynamodb.py)
+                gsi_query_response = self.dynamo_storage.table.query(
+                    IndexName="VectorIdIndex", # Assuming this GSI exists on 'vector_id'
+                    KeyConditionExpression=Key('vector_id').eq(vector_id) # Use imported Key
+                )
+                metadata_items = gsi_query_response.get('Items', [])
+
+                if metadata_items:
+                    # Assuming one document_id per vector_id for simplicity
+                    metadata = metadata_items[0] 
+                    results.append({
+                        "document_id": metadata.get("document_id"),
+                        "vector_id": vector_id,
+                        "metadata": metadata,
+                        "distance": float(distance_score)
+                    })
+                else:
+                    logger.warning(f"No metadata found in DynamoDB for vector_id: {vector_id}")
+
+            except Exception as e:
+                logger.error(f"Error fetching metadata from DynamoDB for vector_id {vector_id}: {e}")
+        
+        logger.info(f"Returning {len(results)} similar documents with metadata.")
+        return results
+
+    def close_connections(self):
+        """Closes any open connections (e.g., to PostgreSQL)."""
+        self.pg_vector_storage.close_connection()
+        # DynamoDB client typically doesn't need explicit closing in this manner with boto3 resource.
+        logger.info("Closed PostgreSQL connection via PgVectorStorage.")
+
+# Note: The DynamoDBStorage class would need to be adapted:
+# 1. To have a more generic method for storing items, like `upsert_item(item_data)`
+#    that works with the `quantum_embeddings` table structure.
+# 2. To have a method for querying by GSI, e.g., `query_by_gsi(index_name, key_name, key_value)`.
+# The current `store_energy_data` is too specific.

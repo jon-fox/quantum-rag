@@ -1,10 +1,12 @@
 # Quantum RAG Energy Forecasting Requirements
 atomic-agents
+boto3
 fastapi
 numpy
 openai
 pydantic
 python-dotenv
+psycopg2
 qiskit
 requests
 sentence_transformers
