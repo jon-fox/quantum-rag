@@ -8,6 +8,7 @@ import numpy as np
 import json
 import os
 from pathlib import Path
+import logging # Add logging import
 
 from src.embeddings.embed_utils import (
     get_embedding_provider,
@@ -15,8 +16,17 @@ from src.embeddings.embed_utils import (
     embed_query,
     efficiency_aware_embedding,
     find_similar_energy_data,
-    load_embeddings
+    load_embeddings # Add load_embeddings to the import list
 )
+
+# Configure logger for this module
+logger = logging.getLogger(__name__)
+# BasicConfig should ideally be called once at application startup, 
+# but for a module-specific logger, this ensures it has a handler if not configured globally.
+# If global config is present (e.g. in app.py), this might be redundant or could be adjusted.
+if not logging.getLogger().hasHandlers():
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
 
 # Default path for embeddings storage
 EMBEDDINGS_PATH = Path(os.environ.get("EMBEDDINGS_PATH", "data/embeddings"))
@@ -123,59 +133,88 @@ def create_embedding_router() -> APIRouter:
         then performs semantic search based on the query.
         """
         # Determine which embedding file to use - prefer OpenAI embeddings if available
-        embedding_file = "openai_energy_embeddings.json"  # Try to use OpenAI embeddings first
-        
-        # Construct full path
+        embedding_file = "openai_energy_embeddings.json"
         embedding_path = EMBEDDINGS_PATH / embedding_file
         
-        # If OpenAI embeddings don't exist, fall back to default embeddings
         if not embedding_path.exists():
             embedding_file = "energy_embeddings.json"
             embedding_path = EMBEDDINGS_PATH / embedding_file
         
         # Load embeddings if not already in memory
-        if embedding_file not in _loaded_embeddings:
+        # Check if the specific file's content is loaded, not just the file name as key
+        if embedding_file not in _loaded_embeddings or not _loaded_embeddings[embedding_file][0]: # Check if items are loaded
+            # Use a logger if available, otherwise print
+            # Assuming logger is configured at the module level in embedding_api.py
+            # If not, replace with `print` or ensure logger is passed/available
+            logger.info(f"Cache miss or empty data for {embedding_file}. Attempting to load from {embedding_path}...")
             try:
-                items, embeddings = load_embeddings(str(embedding_path))
-                _loaded_embeddings[embedding_file] = (items, embeddings)
-            except (FileNotFoundError, json.JSONDecodeError) as e:
-                # If we can't load embeddings, use empty data as a fallback
-                print(f"Warning: Failed to load embeddings from {embedding_path}: {e}. Using empty data for this search.")
-                items = []
-                embeddings = np.array([])
-                _loaded_embeddings[embedding_file] = (items, embeddings)
-        else:
-            items, embeddings = _loaded_embeddings[embedding_file]
+                # Use the imported load_embeddings function
+                items, embeddings_array = load_embeddings(str(embedding_path))
+                if not items and embeddings_array.size == 0: # Check if loading actually failed or returned empty
+                    logger.warning(f"load_embeddings returned empty for {embedding_path}. Using fallback empty data.")
+                    _loaded_embeddings[embedding_file] = ([], np.array([]))
+                else:
+                    _loaded_embeddings[embedding_file] = (items, embeddings_array)
+                    logger.info(f"Successfully loaded and cached embeddings from {embedding_path}")
+            except Exception as e: # Catch any exception from load_embeddings itself
+                logger.error(f"Critical error during load_embeddings for {embedding_path}: {e}. Using fallback empty data.")
+                _loaded_embeddings[embedding_file] = ([], np.array([]))
+        
+        items, embeddings = _loaded_embeddings[embedding_file]
+
+        if not items or embeddings.size == 0:
+            logger.warning(f"No items or embeddings available for {embedding_file} after attempting to load. Returning empty search results.")
+            return SearchResponse(
+                query=search_request.query,
+                results=[],
+                count=0,
+                embedding_type="text" if not search_request.efficiency_aware else "efficiency_aware",
+                model=default_model
+            )
         
         # Generate embedding for the query
         query_embedding = embed_query(search_request.query, default_provider)
         
         # Apply efficiency filtering if needed
         filtered_items = []
-        filtered_embeddings = []
+        filtered_embeddings_list = [] # Use a list to append before converting to np.array
         
-        for idx, item in enumerate(items):
+        for idx, item_data in enumerate(items):
             # Apply efficiency filters if specified
-            efficiency = item.get('efficiency', 0)
+            efficiency = item_data.get('efficiency', 0)
             if search_request.min_efficiency is not None and efficiency < search_request.min_efficiency:
                 continue
             if search_request.max_efficiency is not None and efficiency > search_request.max_efficiency:
                 continue
             
-            filtered_items.append(item)
-            filtered_embeddings.append(embeddings[idx])
+            filtered_items.append(item_data)
+            if idx < len(embeddings): # Ensure index is within bounds for embeddings
+                filtered_embeddings_list.append(embeddings[idx])
+            else:
+                logger.warning(f"Index {idx} out of bounds for embeddings array of length {len(embeddings)}. Skipping embedding for item.")
+
+
+        if not filtered_items or not filtered_embeddings_list:
+            logger.info("No items matched efficiency criteria or embeddings were missing.")
+            return SearchResponse(
+                query=search_request.query,
+                results=[],
+                count=0,
+                embedding_type="text" if not search_request.efficiency_aware else "efficiency_aware",
+                model=default_model
+            )
+
+        filtered_embeddings = np.array(filtered_embeddings_list)
         
-        filtered_embeddings = np.array(filtered_embeddings)
-        
-        # If no items match the criteria
-        if not filtered_items:
-            return {
-                "query": search_request.query,
-                "results": [],
-                "count": 0,
-                "embedding_type": "text" if not search_request.efficiency_aware else "efficiency_aware",
-                "model": default_model
-            }
+        if filtered_embeddings.size == 0:
+             logger.info("Filtered embeddings array is empty.")
+             return SearchResponse(
+                 query=search_request.query,
+                 results=[],
+                 count=0,
+                 embedding_type="text" if not search_request.efficiency_aware else "efficiency_aware",
+                 model=default_model
+             )
         
         # Find similar energy data
         search_results = find_similar_energy_data(

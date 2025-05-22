@@ -4,11 +4,11 @@ of energy consumption data and efficiency metrics for semantic search.
 
 Supports both OpenAI embeddings and SentenceTransformers.
 """
-import os
-import json
-import logging
-from typing import List, Dict, Union, Optional, Tuple, Any
-import numpy as np
+import os # Ensure os is imported
+import logging # Ensure logging is imported
+import json # Add this import
+import numpy as np # Ensure numpy is imported
+from typing import List, Dict, Union, Optional, Tuple, Any # Ensure these are imported
 from dotenv import load_dotenv
 
 # Try to load environment variables
@@ -187,7 +187,47 @@ class SentenceTransformerEmbedding(EmbeddingProvider):
         return self.model.get_sentence_embedding_dimension()
 
 
-def get_embedding_provider(provider_type: str = None) -> EmbeddingProvider:
+def load_embeddings(file_path: str) -> Tuple[List[Dict[str, Any]], np.ndarray]:
+    """
+    Loads items and their embeddings from a JSON file.
+
+    Args:
+        file_path: Path to the JSON file.
+
+    Returns:
+        A tuple containing a list of items (metadata) and a NumPy array of embeddings.
+        Returns empty lists/arrays if the file is not found or cannot be parsed.
+    """
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        items = data.get("items", [])
+        embeddings_list = data.get("embeddings", [])
+        
+        if not items or not embeddings_list:
+            logger.warning(f"Embeddings file {file_path} is missing 'items' or 'embeddings' key, or they are empty.")
+            return [], np.array([])
+            
+        embeddings_array = np.array(embeddings_list)
+        
+        if len(items) != len(embeddings_array):
+            logger.error(f"Mismatch between number of items ({len(items)}) and embeddings ({len(embeddings_array)}) in {file_path}.")
+            return [], np.array([]) # Returning empty for safety
+
+        logger.info(f"Successfully loaded {len(items)} items and embeddings from {file_path}")
+        return items, embeddings_array
+    except FileNotFoundError:
+        logger.error(f"Embedding file not found: {file_path}")
+        return [], np.array([])
+    except json.JSONDecodeError as e:
+        logger.error(f"Error decoding JSON from {file_path}: {e}")
+        return [], np.array([])
+    except Exception as e:
+        logger.error(f"An unexpected error occurred while loading embeddings from {file_path}: {e}")
+        return [], np.array([])
+
+def get_embedding_provider(provider_type: Optional[str] = None) -> EmbeddingProvider: # Corrected type hint
     """Get an embedding provider based on configuration or availability
     
     Args:
