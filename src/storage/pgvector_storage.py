@@ -135,6 +135,21 @@ class PgVectorStorage:
         }
         logger.info(f"Loaded PostgreSQL params from environment: host={self.pg_params.get('host')}, dbname={self.pg_params.get('dbname')}")
 
+    def close_db_connection(self) -> None:
+        """
+        Closes the PostgreSQL connection if it is open.
+        """
+        if self.pg_conn and not self.pg_conn.closed:
+            try:
+                self.pg_conn.close()
+                logger.info("PostgreSQL connection closed successfully.")
+            except psycopg2.Error as e:
+                logger.error(f"Error closing PostgreSQL connection: {e}")
+            finally:
+                self.pg_conn = None
+        else:
+            logger.info("PostgreSQL connection was not open or already closed.")
+
     def _get_connection(self, retry: bool = True) -> Optional[psycopg2.extensions.connection]:
         """
         Establishes or returns an existing PostgreSQL connection.
