@@ -7,7 +7,7 @@ resource "random_password" "db_password" {
 
 # Create a security group for the RDS instance
 resource "aws_security_group" "rds_sg" {
-  name        = "rds-security-group"
+  name        = "rds-security-group-quantum-rag"
   description = "Security group for RDS instance"
   vpc_id      = var.vpc_id
 
@@ -49,7 +49,7 @@ resource "aws_db_subnet_group" "rds_subnet_group" {
 
 # Create a parameter group for PostgreSQL with pgvector extension
 resource "aws_db_parameter_group" "postgres_pgvector" {
-  name        = "postgres-pgvector"
+  name        = "postgres-pgvector-quantum-rag"
   family      = "postgres17"
   description = "PostgreSQL parameter group with pgvector extension"
 
