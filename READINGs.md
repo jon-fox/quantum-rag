@@ -59,6 +59,12 @@ Here are 10 high-quality, accessible research papers and articles that delve int
     *Summary*: Explores how the structure and sufficiency of context impact the performance of RAG systems.
     [Read the article](https://research.google/blog/deeper-insights-into-retrieval-augmented-generation-the-role-of-sufficient-context/)
 
+
+11. **https://link.springer.com/chapter/10.1007/978-3-642-20161-5_79**
+   *Professor related reading, requires subscription*
+
+12. **https://ieeexplore.ieee.org/document/9939296**
+   *Professor related reading, requires subscription*
 ---
 
 These resources should provide a comprehensive overview of current research and developments at the intersection of quantum computing, AI, and RAG systems.
