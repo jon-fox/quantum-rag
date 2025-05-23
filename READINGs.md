@@ -16,6 +16,8 @@ Here are 10 high-quality, accessible research papers and articles that delve int
    *Summary*: Proposes HyperRAG, a system that improves RAG pipelines by reusing key-value caches in rerankers, enhancing both quality and efficiency.
    [Read the paper](https://arxiv.org/abs/2504.02921)
    Read? [  ]
+
+   Notes - https://github.com/LMCache/LMCache - caching mechanism for llm KV
    ---
 
 3. **Enhancing RAG Pipelines with Re-Ranking**
