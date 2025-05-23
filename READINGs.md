@@ -15,7 +15,7 @@ Here are 10 high-quality, accessible research papers and articles that delve int
    *Published*: April 3, 2025
    *Summary*: Proposes HyperRAG, a system that improves RAG pipelines by reusing key-value caches in rerankers, enhancing both quality and efficiency.
    [Read the paper](https://arxiv.org/abs/2504.02921)
-   Read? [  ]
+   Read? [ X ] Could be relevant
 
    Notes - https://github.com/LMCache/LMCache - caching mechanism for llm KV
    ---
@@ -255,4 +255,12 @@ Here are 10 high-quality, accessible research papers and articles that delve int
     Read? [  ]
     ---
 
+Here’s a nicely formatted reference for the DeepSeek paper, suitable for a README or literature review:
 
+21. **DeepSeek-VL: Towards Language Agents with Visual Perception and Programmable Reasoning**
+   *Authors*: DeepSeek-VL Team (Yizhi Wang, Haotian Zhang, Jiacheng Yang, et al.)
+   *Published*: May 2024
+   *Summary*: Introduces DeepSeek-VL, a large vision-language model designed to act as a general-purpose agent with strong capabilities in **visual perception**, **OCR**, and **multi-step tool use**. It supports **programmable reasoning** via code generation and shows strong performance on complex tasks like chart QA, science diagrams, and tool-augmented environments.
+   [Read the paper](https://arxiv.org/abs/2405.04434) | [PDF](https://arxiv.org/pdf/2405.04434)
+   Read? [  ]
+   ---
