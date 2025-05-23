@@ -67,8 +67,7 @@ class SearchResponse(BaseModel):
 def create_embedding_router() -> APIRouter:
     """Create FastAPI router for embedding endpoints"""
     router = APIRouter(
-        prefix="/embeddings",
-        tags=["embeddings"],
+        prefix="",
         responses={404: {"description": "Not found"}},
     )
     

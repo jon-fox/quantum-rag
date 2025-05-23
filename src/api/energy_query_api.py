@@ -10,7 +10,7 @@ from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
-from src.reranker.classical import Document, ClassicalReranker
+from src.reranker.classical import Document as RerankerDocument
 from src.reranker.quantum import QuantumReranker
 from src.reranker.controller import RerankerController
 
@@ -51,8 +51,7 @@ class EnergyQueryResponse(BaseModel):
 
 # Create router
 router = APIRouter(
-    prefix="/api/energy",
-    tags=["energy"]
+    prefix=""
 )
 
 @router.post("/query", response_model=EnergyQueryResponse)
@@ -72,14 +71,14 @@ async def query_energy_data(request: EnergyQueryRequest):
     })
     
     # Mock documents for demo (would come from database in production)
-    mock_documents = [
-        Document(
+    mock_documents: List[RerankerDocument] = [
+        RerankerDocument(
             id="ercot-2024-05-01",
             content="ERCOT forecasted peak load for May 1, 2024: 58.2 GW. Actual load: 57.8 GW.",
             source="ERCOT Daily Report",
             metadata={"date": "2024-05-01", "type": "load_forecast"}
         ),
-        Document(
+        RerankerDocument(
             id="ercot-2024-05-02",
             content="ERCOT forecasted peak load for May 2, 2024: 59.1 GW. Actual load: 60.3 GW.",
             source="ERCOT Daily Report",
@@ -105,7 +104,9 @@ async def query_energy_data(request: EnergyQueryRequest):
     for i, doc in enumerate(reranked_docs):
         # In a real implementation, scores would come from the reranker
         score = 1.0 - (i * 0.1)  # Placeholder scoring logic
-        results.append(QueryResult(document=doc, score=score, reranker_used=reranker_name))
+        # Create a new Document instance for the QueryResult
+        api_doc = Document(id=doc.id, content=doc.content, source=doc.source, metadata=doc.metadata)
+        results.append(QueryResult(document=api_doc, score=score, reranker_used=reranker_name))
     
     return EnergyQueryResponse(
         query=request.query,
