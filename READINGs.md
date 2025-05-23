@@ -7,7 +7,7 @@ Here are 10 high-quality, accessible research papers and articles that delve int
    *Published*: May 12, 2025
    *Summary*: Introduces DynamicRAG, a framework that uses reinforcement learning to dynamically adjust the order and number of retrieved documents in RAG systems based on LLM output quality.
    [Read the paper](https://arxiv.org/abs/2505.07233)
-   Read? [  ]
+   Read? [ X ]
    ---
 
 2. **HyperRAG: Enhancing Quality-Efficiency Tradeoffs in Retrieval-Augmented Generation with Reranker KV-Cache Reuse**
