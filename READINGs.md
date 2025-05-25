@@ -262,5 +262,5 @@ Here’s a nicely formatted reference for the DeepSeek paper, suitable for a REA
    *Published*: May 2024
    *Summary*: Introduces DeepSeek-VL, a large vision-language model designed to act as a general-purpose agent with strong capabilities in **visual perception**, **OCR**, and **multi-step tool use**. It supports **programmable reasoning** via code generation and shows strong performance on complex tasks like chart QA, science diagrams, and tool-augmented environments.
    [Read the paper](https://arxiv.org/abs/2405.04434) | [PDF](https://arxiv.org/pdf/2405.04434)
-   Read? [  ]
+   Read? [ X ]
    ---
