@@ -321,3 +321,84 @@ Read? [  ]
 [Read the paper](https://arxiv.org/abs/quant-ph/9705031)
 Read? [  ]
 
+### Recent Foundational Quantum Computing Papers (2023–2024)
+
+---
+
+#### 1. **Quantum Algorithms: A Survey of Applications and End-to-End Complexities**  
+**Authors**: Alexander M. Dalzell, Sam McArdle, Mario Berta, et al.  
+**Published**: October 2023  
+**Summary**: Provides a comprehensive survey of quantum algorithms across various domains, analyzing complexities and comparing with classical methods.  
+[Read the paper](https://arxiv.org/abs/2310.03011)
+
+---
+
+#### 2. **Quantum Computing: Principles and Applications**  
+**Authors**: Not specified  
+**Published**: October 2023  
+**Summary**: Introduces fundamental principles of quantum computing and explores multilayer quantum architectures, especially NMR platforms.  
+[Read the paper](https://arxiv.org/abs/2310.09386)
+
+---
+
+#### 3. **Quantum Algorithms for Hamiltonian Simulation with Applications to a Non-Abelian Lattice Gauge Theory**  
+**Authors**: Zohreh Davoudi, Alexander F. Shaw, Jesse R. Stryker  
+**Published**: 2023  
+**Summary**: Proposes general quantum algorithms for Hamiltonian simulation relevant to lattice gauge theory applications.  
+[Read the paper](https://quantum-journal.org/papers/q-2023-10-02-1213/)
+
+---
+
+#### 4. **Determining the Ability for Universal Quantum Computing: Testing Controllability via Dimensional Expressivity**  
+**Authors**: Fernando Gago-Encinas, Tobias Hartung, Daniel M. Reich, Karl Jansen, Christiane P. Koch  
+**Published**: 2023  
+**Summary**: Investigates controllability conditions as prerequisites for universal quantum computing and offers formal testing approaches.  
+[Read the paper](https://quantum-journal.org/papers/q-2023-10-02-1214/)
+
+---
+
+#### 5. **Quantum-Inspired Machine Learning: A Survey**  
+**Authors**: Larry Huynh, Jin Hong, Ajmal Mian, et al.  
+**Published**: August 2023  
+**Summary**: Reviews quantum-inspired machine learning approaches, integrating perspectives from both classical and quantum computing domains.  
+[Read the paper](https://arxiv.org/abs/2308.11269)
+
+---
+
+#### 6. **A Survey on Quantum Machine Learning: Current Trends, Challenges, Opportunities, and the Road Ahead**  
+**Authors**: Kamila Zaman, Alberto Marchisio, Muhammad Abdullah Hanif, Muhammad Shafique  
+**Published**: October 2023  
+**Summary**: Offers a detailed review of quantum machine learning developments, covering challenges, frameworks, and future directions.  
+[Read the paper](https://arxiv.org/abs/2310.10315)
+
+---
+
+#### 7. **Quantum Architecture Search: A Survey**  
+**Authors**: Darya Martyniuk, Johannes Jung, Adrian Paschke  
+**Published**: June 2024  
+**Summary**: Explores approaches for automated design of parameterized quantum circuits, focusing on architecture generation and optimization.  
+[Read the paper](https://arxiv.org/abs/2406.06210)
+
+---
+
+#### 8. **Evidence for the Utility of Quantum Computing Before Fault Tolerance**  
+**Authors**: Not specified  
+**Published**: 2023  
+**Summary**: Demonstrates that noisy intermediate-scale quantum (NISQ) devices can outperform classical computers in specific measurement tasks.  
+[Read the paper](https://www.nature.com/articles/s41586-023-06096-3)
+
+---
+
+#### 9. **Transforming Research with Quantum Computing**  
+**Authors**: Not specified  
+**Published**: 2024  
+**Summary**: Discusses recent breakthroughs in quantum computing and highlights applications across industries and scientific disciplines.  
+[Read the paper](https://www.sciencedirect.com/science/article/pii/S2949948824000295)
+
+---
+
+#### 10. **Quantum Computing: Navigating the Future of Computation**  
+**Authors**: Not specified  
+**Published**: 2023  
+**Summary**: Reviews the current landscape of quantum computing and outlines challenges related to hardware, middleware, and scalability.  
+[Read the paper](https://www.mdpi.com/2624-960X/6/4/39)
