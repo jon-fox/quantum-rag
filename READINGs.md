@@ -264,3 +264,60 @@ Here’s a nicely formatted reference for the DeepSeek paper, suitable for a REA
    [Read the paper](https://arxiv.org/abs/2405.04434) | [PDF](https://arxiv.org/pdf/2405.04434)
    Read? [ X ]
    ---
+
+### Foundational Papers in Quantum Computing
+
+---
+
+#### 1. **Simulating Physics with Computers**  
+**Author**: Richard Feynman  
+**Published**: 1982  
+**Summary**: First to argue that classical computers can't efficiently simulate quantum systems, laying the conceptual groundwork for quantum computing.  
+[Read the paper](https://doi.org/10.1007/BF02650179)
+Read? [  ]
+
+---
+
+#### 2. **Quantum Theory, the Church-Turing Principle and the Universal Quantum Computer**  
+**Author**: David Deutsch  
+**Published**: 1985  
+**Summary**: Introduces the concept of the universal quantum computer and extends the Church-Turing thesis to quantum mechanics.  
+[Read the paper](https://doi.org/10.1098/rspa.1985.0070)
+Read? [  ]
+
+---
+
+#### 3. **Algorithms for Quantum Computation: Discrete Logarithms and Factoring**  
+**Author**: Peter Shor  
+**Published**: 1994  
+**Summary**: Introduces Shor’s algorithm, showing quantum computers can factor integers exponentially faster — a major breakthrough in quantum algorithms.  
+[Read the paper](https://doi.org/10.1109/SFCS.1994.365700)
+Read? [  ]
+
+---
+
+#### 4. **A Fast Quantum Mechanical Algorithm for Database Search**  
+**Author**: Lov Grover  
+**Published**: 1996  
+**Summary**: Presents Grover’s algorithm, enabling quadratic speedup for unstructured search problems.  
+[Read the paper](https://doi.org/10.1145/237814.237866)
+Read? [  ]
+
+---
+
+#### 5. **Communication via One- and Two-Particle Operators on Einstein-Podolsky-Rosen States**  
+**Authors**: Charles H. Bennett, Stephen J. Wiesner  
+**Published**: 1992  
+**Summary**: Proposes quantum teleportation and shows how entanglement can transmit quantum information.  
+[Read the paper](https://doi.org/10.1103/PhysRevLett.69.2881)
+Read? [  ]
+
+---
+
+#### 6. **Reliable Quantum Computers**  
+**Author**: John Preskill  
+**Published**: 1998  
+**Summary**: Lays the foundation for fault-tolerant quantum computing through quantum error correction and the threshold theorem.  
+[Read the paper](https://arxiv.org/abs/quant-ph/9705031)
+Read? [  ]
+
