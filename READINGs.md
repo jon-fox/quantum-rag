@@ -330,6 +330,7 @@ Read? [  ]
 **Published**: October 2023  
 **Summary**: Provides a comprehensive survey of quantum algorithms across various domains, analyzing complexities and comparing with classical methods.  
 [Read the paper](https://arxiv.org/abs/2310.03011)
+Read? [  ]
 
 ---
 
@@ -338,6 +339,7 @@ Read? [  ]
 **Published**: October 2023  
 **Summary**: Introduces fundamental principles of quantum computing and explores multilayer quantum architectures, especially NMR platforms.  
 [Read the paper](https://arxiv.org/abs/2310.09386)
+Read? [  ]
 
 ---
 
@@ -346,6 +348,7 @@ Read? [  ]
 **Published**: 2023  
 **Summary**: Proposes general quantum algorithms for Hamiltonian simulation relevant to lattice gauge theory applications.  
 [Read the paper](https://quantum-journal.org/papers/q-2023-10-02-1213/)
+Read? [  ]
 
 ---
 
@@ -354,6 +357,7 @@ Read? [  ]
 **Published**: 2023  
 **Summary**: Investigates controllability conditions as prerequisites for universal quantum computing and offers formal testing approaches.  
 [Read the paper](https://quantum-journal.org/papers/q-2023-10-02-1214/)
+Read? [  ]
 
 ---
 
@@ -362,6 +366,7 @@ Read? [  ]
 **Published**: August 2023  
 **Summary**: Reviews quantum-inspired machine learning approaches, integrating perspectives from both classical and quantum computing domains.  
 [Read the paper](https://arxiv.org/abs/2308.11269)
+Read? [  ]
 
 ---
 
@@ -370,6 +375,7 @@ Read? [  ]
 **Published**: October 2023  
 **Summary**: Offers a detailed review of quantum machine learning developments, covering challenges, frameworks, and future directions.  
 [Read the paper](https://arxiv.org/abs/2310.10315)
+Read? [  ]
 
 ---
 
@@ -378,6 +384,7 @@ Read? [  ]
 **Published**: June 2024  
 **Summary**: Explores approaches for automated design of parameterized quantum circuits, focusing on architecture generation and optimization.  
 [Read the paper](https://arxiv.org/abs/2406.06210)
+Read? [  ]
 
 ---
 
@@ -386,6 +393,7 @@ Read? [  ]
 **Published**: 2023  
 **Summary**: Demonstrates that noisy intermediate-scale quantum (NISQ) devices can outperform classical computers in specific measurement tasks.  
 [Read the paper](https://www.nature.com/articles/s41586-023-06096-3)
+Read? [  ]
 
 ---
 
@@ -394,6 +402,7 @@ Read? [  ]
 **Published**: 2024  
 **Summary**: Discusses recent breakthroughs in quantum computing and highlights applications across industries and scientific disciplines.  
 [Read the paper](https://www.sciencedirect.com/science/article/pii/S2949948824000295)
+Read? [  ]
 
 ---
 
@@ -402,3 +411,4 @@ Read? [  ]
 **Published**: 2023  
 **Summary**: Reviews the current landscape of quantum computing and outlines challenges related to hardware, middleware, and scalability.  
 [Read the paper](https://www.mdpi.com/2624-960X/6/4/39)
+Read? [  ]
