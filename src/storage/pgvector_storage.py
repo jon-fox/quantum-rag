@@ -6,7 +6,6 @@ import logging
 import psycopg2
 import numpy as np
 from psycopg2 import sql
-from psycopg2.extras import Json, execute_values # type: ignore
 from typing import List, Tuple, Optional, Dict, Any
 
 try:
@@ -29,8 +28,6 @@ class PgVectorStorage:
         self,
         db_params: Optional[Dict[str, str]] = None,
         table_name: str = "document_embeddings",
-        vector_dim: int = 1536, # Default for OpenAI text-embedding-3-small
-        lazy_init: bool = True,
         app_environment: Optional[str] = None # Added for SSM path
     ):
         """
@@ -40,18 +37,14 @@ class PgVectorStorage:
             db_params: PostgreSQL connection parameters (host, port, dbname, user, password).
                        If None, attempts to load from AWS SSM Parameter Store, then environment variables.
             table_name: Name of the table to store embeddings.
-            vector_dim: Dimension of the embeddings.
-            lazy_init: If True, schema initialization is deferred until the first operation.
             app_environment: The application environment (e.g., 'dev', 'prod') for SSM path construction.
                              Defaults to APP_ENVIRONMENT env var or 'dev'.
         """
         self.table_name = table_name
-        self.vector_dim = vector_dim
         self.pg_conn: Optional[psycopg2.extensions.connection] = None
         self.pg_params: Optional[Dict[str, str]] = db_params
-        self.schema_initialized = False
         self.app_environment = app_environment or os.environ.get("APP_ENVIRONMENT", "prod")
-        logger.info(f"PgVectorStorage: Initializing with app_environment='{self.app_environment}'") # Added log
+        logger.info(f"PgVectorStorage: Initializing with app_environment='{self.app_environment}'")
 
         if not self.pg_params:
             logger.info("PgVectorStorage: db_params not provided, attempting to load from AWS SSM Parameter Store...")
@@ -68,9 +61,6 @@ class PgVectorStorage:
             logger.info(f"PgVectorStorage: Resolved DB parameters: {masked_params}")
         else:
             logger.warning("PgVectorStorage: DB connection parameters NOT successfully loaded after all attempts (SSM, Env Vars). Connection attempts will likely fail.")
-
-        if not lazy_init:
-            self._init_schema()
 
     def _load_db_params_from_ssm(self) -> bool:
         """
@@ -190,238 +180,6 @@ class PgVectorStorage:
                     raise
         return self.pg_conn
 
-    def _init_schema(self):
-        """
-        Initializes the database schema, creating the pgvector extension and the embeddings table.
-        """
-        if self.schema_initialized:
-            return True
-
-        conn = self._get_connection(retry=False)
-        if not conn:
-            logger.warning("Skipping schema initialization as PostgreSQL connection is unavailable.")
-            return False
-
-        try:
-            with conn.cursor() as cur:
-                logger.info("Initializing pgvector schema...")
-                cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-                
-                table_creation_query = sql.SQL("""
-                CREATE TABLE IF NOT EXISTS {table} (
-                    vector_id UUID PRIMARY KEY,
-                    embedding VECTOR({vector_dim}),
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                );
-                """).format(
-                    table=sql.Identifier(self.table_name),
-                    vector_dim=sql.Literal(self.vector_dim)
-                )
-                cur.execute(table_creation_query)
-
-                index_name = f"idx_{self.table_name}_embedding_hnsw"
-                cur.execute(f"SELECT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = '{index_name}' AND n.nspname = 'public');") # Assumes public schema
-                row = cur.fetchone()
-                index_exists = row[0] if row else False
-
-                if not index_exists:
-                    # Using HNSW index as an example. For cosine distance, use vector_cosine_ops.
-                    # For L2 distance, use vector_l2_ops.
-                    # m and ef_construction are HNSW parameters.
-                    index_creation_query = sql.SQL("""
-                    CREATE INDEX {index_name} ON {table} USING HNSW (embedding vector_cosine_ops)
-                    WITH (m = 16, ef_construction = 64);
-                    """).format(
-                        index_name=sql.Identifier(index_name),
-                        table=sql.Identifier(self.table_name)
-                    )
-                    # cur.execute(index_creation_query) # Uncomment to create HNSW index
-                    # logger.info(f"Created HNSW index '{index_name}' on {self.table_name}.embedding")
-
-                    ivfflat_index_name = f"idx_{self.table_name}_embedding_ivfflat"
-                    cur.execute(f"SELECT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = '{ivfflat_index_name}' AND n.nspname = 'public');")
-                    row = cur.fetchone()
-                    ivfflat_index_exists = row[0] if row else False
-                    if not ivfflat_index_exists:
-                        ivfflat_index_creation_query = sql.SQL("""
-                        CREATE INDEX {index_name} ON {table} USING IVFFLAT (embedding vector_cosine_ops)
-                        WITH (lists = 100);
-                        """).format(
-                            index_name=sql.Identifier(ivfflat_index_name),
-                            table=sql.Identifier(self.table_name)
-                        )
-                        cur.execute(ivfflat_index_creation_query)
-                        logger.info(f"Created IVFFlat index '{ivfflat_index_name}' on {self.table_name}.embedding")
-
-
-            conn.commit()
-            self.schema_initialized = True
-            logger.info(f"pgvector schema initialized successfully for table '{self.table_name}'.")
-            return True
-        except psycopg2.Error as e:
-            logger.error(f"Error initializing pgvector schema: {e}")
-            if conn:
-                conn.rollback()
-            return False
-        finally:
-            if conn and not conn.closed:
-                conn.close()
-    
-    def store_embedding(self, vector_id: str, embedding: np.ndarray) -> bool:
-        """
-        Stores a single embedding vector.
-
-        Args:
-            vector_id: The UUID string for the vector.
-            embedding: The numpy array representing the embedding.
-
-        Returns:
-            True if storage was successful, False otherwise.
-        """
-        if not self.schema_initialized:
-            self._init_schema()
-            if not self.schema_initialized: # Check again after attempting init
-                logger.error("Cannot store embedding, schema not initialized and initialization failed.")
-                return False
-
-        conn = self._get_connection()
-        if not conn:
-            return False
-
-        try:
-            with conn.cursor() as cur:
-                # pgvector expects a list or string representation of the vector
-                embedding_list = embedding.tolist()
-                
-                upsert_query = sql.SQL("""
-                INSERT INTO {table} (vector_id, embedding, updated_at)
-                VALUES (%s, %s, CURRENT_TIMESTAMP)
-                ON CONFLICT (vector_id) DO UPDATE SET
-                    embedding = EXCLUDED.embedding,
-                    updated_at = CURRENT_TIMESTAMP;
-                """).format(table=sql.Identifier(self.table_name))
-                
-                cur.execute(upsert_query, (vector_id, embedding_list))
-            conn.commit()
-            logger.info(f"Successfully stored/updated embedding for vector_id: {vector_id}")
-            return True
-        except psycopg2.Error as e:
-            logger.error(f"Error storing embedding for vector_id {vector_id}: {e}")
-            if conn:
-                conn.rollback()
-            return False
-        finally:
-            if conn and not conn.closed:
-                conn.close()
-
-    def batch_store_embeddings(self, embeddings_data: List[Tuple[str, np.ndarray]]) -> bool:
-        """
-        Stores multiple embeddings in a batch.
-
-        Args:
-            embeddings_data: A list of tuples, where each tuple is (vector_id, embedding_array).
-
-        Returns:
-            True if batch storage was successful, False otherwise.
-        """
-        if not embeddings_data:
-            return True 
-        
-        if not self.schema_initialized:
-            self._init_schema()
-            if not self.schema_initialized:
-                logger.error("Cannot batch store embeddings, schema not initialized and initialization failed.")
-                return False
-
-        conn = self._get_connection()
-        if not conn:
-            return False
-
-        try:
-            with conn.cursor() as cur:
-                # Prepare data for execute_values
-                # (vector_id, embedding_list_as_string, created_at, updated_at)
-                # pgvector can take string representation '[1,2,3]'
-                data_to_insert = [
-                    (vector_id, np.array(embedding).tolist()) for vector_id, embedding in embeddings_data
-                ]
-
-                upsert_query = sql.SQL("""
-                INSERT INTO {table} (vector_id, embedding, updated_at)
-                VALUES %s
-                ON CONFLICT (vector_id) DO UPDATE SET
-                    embedding = EXCLUDED.embedding,
-                    updated_at = CURRENT_TIMESTAMP;
-                """).format(table=sql.Identifier(self.table_name))
-
-                # page_size is important for performance with large batches
-                execute_values(cur, upsert_query, data_to_insert, template=None, page_size=100)
-            conn.commit()
-            logger.info(f"Successfully batch stored/updated {len(embeddings_data)} embeddings.")
-            return True
-        except psycopg2.Error as e:
-            logger.error(f"Error batch storing embeddings: {e}")
-            if conn:
-                conn.rollback()
-            return False
-        finally:
-            if conn and not conn.closed:
-                conn.close()
-        return True # Assuming success if no exceptions
-
-    def list_databases(self) -> List[str]:
-        """Lists all non-template databases."""
-        conn = self._get_connection()
-        if not conn:
-            logger.error("Cannot list databases, no connection.")
-            return []
-        
-        databases = []
-        try:
-            with conn.cursor() as cur:
-                cur.execute("SELECT datname FROM pg_database WHERE datistemplate = false;")
-                rows = cur.fetchall()
-                databases = [row[0] for row in rows]
-            logger.info(f"Found databases: {databases}")
-        except psycopg2.Error as e:
-            logger.error(f"Error listing databases: {e}")
-            if conn and not conn.closed:
-                try: conn.rollback()
-                except psycopg2.Error as rb_error: logger.error(f"Rollback failed: {rb_error}")
-        finally:
-            if conn and not conn.closed:
-                conn.close()
-        return databases
-
-    def list_tables(self) -> List[str]:
-        """Lists all tables in the current database (excluding system tables)."""
-        conn = self._get_connection()
-        if not conn:
-            logger.error("Cannot list tables, no connection.")
-            return []
-
-        tables = []
-        try:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT tablename 
-                    FROM pg_catalog.pg_tables 
-                    WHERE schemaname NOT IN ('pg_catalog', 'information_schema');
-                """)
-                rows = cur.fetchall()
-                tables = [row[0] for row in rows]
-            logger.info(f"Found tables in current database: {tables}")
-        except psycopg2.Error as e:
-            logger.error(f"Error listing tables: {e}")
-            if conn and not conn.closed:
-                try: conn.rollback()
-                except psycopg2.Error as rb_error: logger.error(f"Rollback failed: {rb_error}")
-        finally:
-            if conn and not conn.closed:
-                conn.close()
-        return tables
-
     def execute_select_query(self, query: str) -> Tuple[Optional[List[str]], Optional[List[Tuple[Any, ...]]], Optional[str]]:
         """
         Executes a given SELECT SQL query and returns the results.
@@ -534,16 +292,9 @@ class PgVectorStorage:
             A list of tuples, where each tuple is (vector_id, similarity_score).
             For cosine similarity, higher is better. For L2 distance, lower is better.
         """
-        if not self.schema_initialized:
-            logger.warning("Schema not initialized. Attempting to initialize now.")
-            self._init_schema()
-            if not self.schema_initialized:
-                logger.error("Cannot find similar embeddings, schema not initialized and initialization failed.")
-                return []
-
         conn = self._get_connection()
         if not conn:
-            logger.error("Cannot find similar embeddings, no database connection.") # Added log
+            logger.error("Cannot find similar embeddings, no database connection.")
             return []
 
         results: List[Tuple[str, float]] = []
@@ -606,8 +357,12 @@ class PgVectorStorage:
             logger.error(f"An unexpected error occurred while finding similar embeddings: {e}", exc_info=True)
             return [] # Return empty list on unexpected error
         finally:
-            if conn and not conn.closed:
-                conn.close()
+            # Connection is managed by the class instance and closed via close_connection().
+            # Rollback is handled in specific except blocks.
+            # Original code:
+            # if conn and not conn.closed:
+            #     conn.close()
+            pass
         
         return results
 
@@ -621,13 +376,6 @@ class PgVectorStorage:
         Returns:
             The numpy array representing the embedding, or None if not found.
         """
-        if not self.schema_initialized:
-            logger.warning("Schema not initialized. Attempting to initialize now.")
-            self._init_schema()
-            if not self.schema_initialized:
-                logger.error("Cannot retrieve embedding, schema not initialized and initialization failed.")
-                return None
-
         conn = self._get_connection()
         if not conn:
             logger.error("Cannot retrieve embedding, no database connection.")
@@ -653,53 +401,21 @@ class PgVectorStorage:
                     logger.warning(f"No embedding found for vector_id: {vector_id}")
         except psycopg2.Error as e:
             logger.error(f"Error retrieving embedding for vector_id {vector_id}: {e}")
+            if conn and not conn.closed: # Add rollback logic for consistency
+                try:
+                    conn.rollback()
+                    logger.info(f"Rolled back transaction for vector_id {vector_id} due to error.")
+                except psycopg2.Error as rb_error:
+                    logger.error(f"Rollback failed for vector_id {vector_id}: {rb_error}")
         finally:
-            if conn and not conn.closed:
-                conn.close()
+            # Connection is managed by the class instance and closed via close_connection().
+            # Rollback is handled in specific except blocks.
+            # Original code:
+            # if conn and not conn.closed:
+            #     conn.close()
+            pass
 
         return result
-
-    def delete_embedding_by_id(self, vector_id: str) -> bool:
-        """
-        Deletes an embedding vector by its ID.
-
-        Args:
-            vector_id: The UUID string of the vector.
-
-        Returns:
-            True if deletion was successful, False otherwise.
-        """
-        if not self.schema_initialized:
-            logger.warning("Schema not initialized. Attempting to initialize now.")
-            self._init_schema()
-            if not self.schema_initialized:
-                logger.error("Cannot delete embedding, schema not initialized and initialization failed.")
-                return False
-
-        conn = self._get_connection()
-        if not conn:
-            logger.error("Cannot delete embedding, no database connection.")
-            return False
-
-        try:
-            with conn.cursor() as cur:
-                query = sql.SQL("""
-                    DELETE FROM {table}
-                    WHERE vector_id = %s;
-                """).format(table=sql.Identifier(self.table_name))
-
-                cur.execute(query, (vector_id,))
-            conn.commit()
-            logger.info(f"Successfully deleted embedding for vector_id: {vector_id}")
-            return True
-        except psycopg2.Error as e:
-            logger.error(f"Error deleting embedding for vector_id {vector_id}: {e}")
-            if conn:
-                conn.rollback()
-            return False
-        finally:
-            if conn and not conn.closed:
-                conn.close()
 
     def close_connection(self):
         """Closes the PostgreSQL connection if it's open."""

@@ -1,12 +1,11 @@
 """
-Embedding utilities for generating, storing, and searching vector embeddings
-of energy consumption data and efficiency metrics for semantic search.
+Embedding utilities for generating vector embeddings for semantic search queries
+and finding similar items.
 
 Supports both OpenAI embeddings and SentenceTransformers.
 """
 import os # Ensure os is imported
 import logging # Ensure logging is imported
-import json # Add this import
 import numpy as np # Ensure numpy is imported
 from typing import List, Dict, Union, Optional, Tuple, Any # Ensure these are imported
 from dotenv import load_dotenv
@@ -147,7 +146,14 @@ class SentenceTransformerEmbedding(EmbeddingProvider):
         
         self.model_name = model_name
         self.model = SentenceTransformer(model_name)
-        
+        self._embedding_dim_st: Optional[int] = self.model.get_sentence_embedding_dimension()
+        if self._embedding_dim_st is None:
+            # Fallback or error if dimension cannot be determined
+            logger.warning(f"Could not determine embedding dimension for {model_name}. Defaulting or erroring might be needed.")
+            # Depending on desired behavior, you could raise an error or set a default
+            # For now, let's raise an error if it's None, as it's crucial for some operations.
+            raise ValueError(f"Embedding dimension for {model_name} could not be determined.")
+
     def get_embeddings(self, texts: List[str]) -> np.ndarray:
         """Generate embeddings using SentenceTransformer
         
@@ -184,48 +190,10 @@ class SentenceTransformerEmbedding(EmbeddingProvider):
     @property
     def embedding_dim(self) -> int:
         """Return the embedding dimension for the model"""
-        return self.model.get_sentence_embedding_dimension()
+        if self._embedding_dim_st is None: # Should have been caught in __init__
+            raise ValueError("Embedding dimension was not properly initialized.")
+        return self._embedding_dim_st
 
-
-def load_embeddings(file_path: str) -> Tuple[List[Dict[str, Any]], np.ndarray]:
-    """
-    Loads items and their embeddings from a JSON file.
-
-    Args:
-        file_path: Path to the JSON file.
-
-    Returns:
-        A tuple containing a list of items (metadata) and a NumPy array of embeddings.
-        Returns empty lists/arrays if the file is not found or cannot be parsed.
-    """
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        
-        items = data.get("items", [])
-        embeddings_list = data.get("embeddings", [])
-        
-        if not items or not embeddings_list:
-            logger.warning(f"Embeddings file {file_path} is missing 'items' or 'embeddings' key, or they are empty.")
-            return [], np.array([])
-            
-        embeddings_array = np.array(embeddings_list)
-        
-        if len(items) != len(embeddings_array):
-            logger.error(f"Mismatch between number of items ({len(items)}) and embeddings ({len(embeddings_array)}) in {file_path}.")
-            return [], np.array([]) # Returning empty for safety
-
-        logger.info(f"Successfully loaded {len(items)} items and embeddings from {file_path}")
-        return items, embeddings_array
-    except FileNotFoundError:
-        logger.error(f"Embedding file not found: {file_path}")
-        return [], np.array([])
-    except json.JSONDecodeError as e:
-        logger.error(f"Error decoding JSON from {file_path}: {e}")
-        return [], np.array([])
-    except Exception as e:
-        logger.error(f"An unexpected error occurred while loading embeddings from {file_path}: {e}")
-        return [], np.array([])
 
 def get_embedding_provider(provider_type: Optional[str] = None) -> EmbeddingProvider: # Corrected type hint
     """Get an embedding provider based on configuration or availability
@@ -262,78 +230,6 @@ def get_embedding_provider(provider_type: Optional[str] = None) -> EmbeddingProv
         return SentenceTransformerEmbedding(model_name=model_name)
     else:
         raise ValueError(f"Unknown embedding provider type: {provider_type}")
-
-
-def create_energy_embedding_text(item: Dict[str, Any]) -> str:
-    """Create a combined text representation of energy data details for embedding
-    
-    Args:
-        item: Dictionary containing energy data details
-        
-    Returns:
-        String combining relevant energy data details
-    """
-    # Extract fields with fallbacks to empty strings
-    source_type = item.get("source_type", "").strip()
-    location = item.get("location", "").strip()
-    meter_id = item.get("meter_id", "").strip()
-    description = item.get("description", "").strip()
-    period = item.get("period", "").strip()
-    year = item.get("year", "").strip()
-    
-    # Combine fields with importance weighting (repeat important fields)
-    text_parts = []
-    
-    # Source type and location are most important - repeat them
-    if source_type:
-        text_parts.extend([source_type] * 3)
-    if location:
-        text_parts.extend([location] * 3)
-    if meter_id:
-        text_parts.extend([meter_id] * 2)
-        
-    # Add year and period once
-    if year:
-        text_parts.append(f"Year {year}")
-    if period:
-        text_parts.append(f"Period: {period}")
-        
-    # Add full description at the end
-    if description:
-        text_parts.append(description)
-        
-    # Join all parts with spaces
-    return " ".join(text_parts)
-
-
-def embed_energy_data_items(
-    items: List[Dict[str, Any]], 
-    provider: Optional[EmbeddingProvider] = None
-) -> Tuple[List[Dict[str, Any]], np.ndarray]:
-    """Generate embeddings for a list of energy data items
-    
-    Args:
-        items: List of dictionaries containing energy data details
-        provider: EmbeddingProvider to use (if None, one will be created)
-        
-    Returns:
-        Tuple of (processed_items, embeddings_array)
-    """
-    # Create provider if not provided
-    if provider is None:
-        provider = get_embedding_provider()
-    
-    # Create text representations for each energy data entry
-    texts = []
-    for item in items:
-        # Add the embedding text to each item
-        item["embedding_text"] = create_energy_embedding_text(item)
-        texts.append(item["embedding_text"])
-    
-    # Generate embeddings
-    embeddings = provider.get_embeddings(texts)
-    
-    return items, embeddings
 
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
@@ -411,43 +307,3 @@ def embed_query(
     # Generate embedding
     embeddings = provider.get_embeddings([query])
     return embeddings[0]
-
-
-def efficiency_aware_embedding(
-    description: str,
-    efficiency: float,
-    provider: Optional[EmbeddingProvider] = None,
-    efficiency_weight: float = 0.2
-) -> np.ndarray:
-    """Generate a specialized embedding that includes energy efficiency awareness
-    
-    This combines a normal text embedding with efficiency information
-    to allow semantic search that's aware of efficiency ranges.
-    
-    Args:
-        description: Text description of the energy data
-        efficiency: Efficiency metric of the energy source
-        provider: EmbeddingProvider to use (if None, one will be created)
-        efficiency_weight: Weight to give the efficiency factor (0-1)
-        
-    Returns:
-        Modified embedding vector
-    """
-    # Create provider if not provided
-    if provider is None:
-        provider = get_embedding_provider()
-    
-    # Generate normal embedding
-    text_embedding = provider.get_embeddings([description])[0]
-    
-    # Create an efficiency-aware prefix
-    efficiency_context = f"This energy source has efficiency rating of {efficiency:.2f}. "
-    efficiency_embedding = provider.get_embeddings([efficiency_context + description])[0]
-    
-    # Combine embeddings with weighting
-    combined_embedding = (1 - efficiency_weight) * text_embedding + efficiency_weight * efficiency_embedding
-    
-    # Normalize the result
-    combined_embedding /= np.linalg.norm(combined_embedding)
-    
-    return combined_embedding
