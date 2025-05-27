@@ -35,7 +35,7 @@ class QuantumReranker:
         if not QISKIT_AVAILABLE:
             print("Warning: Qiskit not available. Falling back to classical reranking methods.")
     
-    def rerank(self, query: str, documents: List[Document], top_k: int = None) -> List[Document]:
+    def rerank(self, query: str, documents: List[Document], top_k: int = None) -> List[Tuple[Document, float]]:
         """
         Rerank documents based on their relevance to the query using quantum methods.
         
@@ -45,11 +45,12 @@ class QuantumReranker:
             top_k: Number of documents to return after reranking
         
         Returns:
-            Reranked list of documents
+            Reranked list of (document, score) tuples
         """
         # Fall back to classical methods if quantum libraries aren't available
         if not QISKIT_AVAILABLE:
-            return self.classical_fallback.rerank(query, documents, top_k)
+            # Ensure fallback also returns List[Tuple[Document, float]]
+            return self.classical_fallback.rerank(query, documents, top_k) 
         
         if not documents:
             return []
@@ -58,14 +59,13 @@ class QuantumReranker:
         scored_docs = self._quantum_score_documents(query, documents)
         
         # Sort by score in descending order
-        reranked_docs = sorted(scored_docs, key=lambda x: x[1], reverse=True)
+        reranked_docs_with_scores = sorted(scored_docs, key=lambda x: x[1], reverse=True)
         
-        # Return top_k documents if specified
+        # Return top_k (document, score) tuples if specified
         if top_k is not None:
-            reranked_docs = reranked_docs[:top_k]
+            reranked_docs_with_scores = reranked_docs_with_scores[:top_k]
         
-        # Return just the documents without scores
-        return [doc for doc, _ in reranked_docs]
+        return reranked_docs_with_scores # Return list of tuples
     
     def _quantum_score_documents(self, query: str, documents: List[Document]) -> List[Tuple[Document, float]]:
         """

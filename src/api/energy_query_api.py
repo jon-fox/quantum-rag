@@ -6,17 +6,21 @@ This API provides endpoints for:
 """
 import json
 import numpy as np
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple # Ensured Tuple is imported
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
-import logging # Added import for logging
+import logging
 
 from src.reranker.classical import Document as RerankerDocument
 from src.reranker.quantum import QuantumReranker
 from src.reranker.controller import RerankerController
-from src.storage.pgvector_storage import PgVectorStorage # Added import
-from src.embeddings.embed_utils import get_embedding_provider, EmbeddingProvider # Added import
-import os # Added import for environment variables
+from src.storage.dual_storage import DualStorage # Assuming src.storage.dual_storage is resolvable at runtime
+from src.embeddings.embed_utils import get_embedding_provider, EmbeddingProvider
+import os
+
+# Initialize logger early
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO) 
 
 # Define schemas
 class Document(BaseModel):
@@ -52,100 +56,78 @@ class EnergyQueryResponse(BaseModel):
     query: str
     results: List[QueryResult]
     reranker_used: str
+    # Add a field for detailed_error for debugging if needed
+    # detailed_error: Optional[str] = None 
 
 # Create router
 router = APIRouter(
-    prefix=""
+    prefix="" # Consider adding a prefix like "/api/v1"
 )
 
-# Initialize PgVectorStorage and EmbeddingProvider
-# These should ideally be managed with FastAPI's lifespan events or dependency injection for production
+# Initialize DualStorage and EmbeddingProvider
+dual_storage_manager: Optional[DualStorage] = None
+embed_provider: Optional[EmbeddingProvider] = None
+
 try:
-    pg_storage = PgVectorStorage(app_environment=os.environ.get("APP_ENVIRONMENT", "prod"))
+    dual_storage_manager = DualStorage()
     embed_provider = get_embedding_provider()
+    logger.info("DualStorage and EmbeddingProvider initialized successfully.")
 except Exception as e:
-    # Log this error appropriately in a real application
-    print(f"Error initializing PgVectorStorage or EmbeddingProvider: {e}")
-    pg_storage = None
-    embed_provider = None
-
-
-# Configure logger
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO) # You can adjust the level
+    logger.critical(f"CRITICAL: Error initializing DualStorage or EmbeddingProvider: {e}", exc_info=True)
+    # dual_storage_manager and embed_provider remain None, caught by endpoint check
 
 
 @router.post("/query", response_model=EnergyQueryResponse)
 async def query_energy_data(request: EnergyQueryRequest):
-    """
-    Query ERCOT energy data using semantic search and quantum-enhanced reranking.
-    
-    The endpoint supports three reranker modes:
-    - classical: Uses traditional similarity metrics only
-    - quantum: Uses quantum circuit-based similarity
-    - auto: Intelligently selects the best reranker for the query
-    """
     logger.info(f"Received query request: {request.model_dump_json()}")
 
-    if not pg_storage or not embed_provider:
-        logger.error("PgVectorStorage or EmbeddingProvider not initialized.")
-        raise HTTPException(status_code=503, detail="Database or embedding service not available.")
-    
-    logger.info("Successfully initialized PgVectorStorage and EmbeddingProvider.")
+    if not dual_storage_manager or not embed_provider:
+        logger.error("DualStorage or EmbeddingProvider not initialized. Check startup logs.")
+        raise HTTPException(status_code=503, detail="Core services (database/embedding) not available.")
 
-    # Initialize controller that manages both rerankers
     controller = RerankerController({
         "classical_config": {"method": "cosine"},
         "quantum_config": {"method": "state_fidelity", "n_qubits": 4}
     })
     
-    # 1. Generate embedding for the input query
     try:
-        query_embedding_list = embed_provider.get_embeddings([request.query])
-        if query_embedding_list is None or len(query_embedding_list) == 0:
-            logger.error("Failed to generate query embedding: Embedding list is None or empty.")
+        query_embedding_array = embed_provider.get_embeddings([request.query])
+        if not isinstance(query_embedding_array, np.ndarray) or query_embedding_array.ndim == 0 or query_embedding_array.size == 0:
+            logger.error("Failed to generate query embedding: Result is not a valid numpy array or is empty.")
             raise HTTPException(status_code=500, detail="Failed to generate query embedding.")
-        query_embedding = query_embedding_list[0]
+        query_embedding = query_embedding_array[0]
         logger.info(f"Successfully generated query embedding for query: {request.query}")
     except Exception as e:
         logger.error(f"Error generating query embedding: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error generating query embedding: {e}")
 
-    # 2. Find similar documents from PgVector
     try:
-        # Assuming find_similar_embeddings returns (id, score)
-        # We need to fetch full document content based on these IDs.
-        # This part needs a way to get document content by ID.
-        # For now, let's assume find_similar_embeddings could be extended or
-        # we have another method to fetch documents.
-        # Let's simulate fetching documents for now, focusing on the pg_storage call.
-        
-        similar_docs_from_db = pg_storage.find_similar_embeddings(
+        similar_docs_with_metadata = dual_storage_manager.find_similar_documents(
             query_embedding=query_embedding,
-            top_k=request.limit * 2, # Fetch more to allow reranking
+            top_k=request.limit * 2, 
             metric="cosine" 
         )
-        logger.info(f"Retrieved {len(similar_docs_from_db)} documents from PgVector for query: {request.query}")
+        logger.info(f"Retrieved {len(similar_docs_with_metadata)} documents with metadata via DualStorage for query: {request.query}")
         
-        # Mocking document retrieval based on IDs from pg_storage
-        # In a real scenario, you'd query your main database for content using these IDs.
         retrieved_documents: List[RerankerDocument] = []
-        for doc_id, _ in similar_docs_from_db:
-            # This is a placeholder. You need to implement fetching document content by ID.
-            # For example, query another table or service.
-            # Here, we'll create dummy RerankerDocument objects.
-            # If your pg_storage also stores content or can join to get it, that would be ideal.
+        for doc_info in similar_docs_with_metadata:
+            metadata = doc_info.get("metadata", {})
+            content = metadata.get("content") or metadata.get("summary", f"Content for {doc_info.get('document_id', 'N/A')}")
+            if not content:
+                 logger.warning(f"Document ID {doc_info.get('document_id')} missing 'content' and 'summary' field in metadata, using placeholder.")
+                 content = f"Placeholder content for document {doc_info.get('document_id', 'N/A')}"
+
             retrieved_documents.append(RerankerDocument(
-                id=str(doc_id), 
-                content=f"Content for {doc_id}", # Placeholder content
-                source="Database", # Placeholder source
-                metadata={"retrieved_from_pgvector": True} # Placeholder metadata
+                id=str(doc_info.get("document_id", doc_info.get("vector_id"))),
+                content=content,
+                source=metadata.get("source", "DualStorage"), 
+                metadata=metadata
             ))
-        logger.info(f"Processed {len(retrieved_documents)} documents after initial retrieval.")
+        
+        logger.info(f"Processed {len(retrieved_documents)} documents for reranking.")
         
         if not retrieved_documents:
-            logger.warning(f"No documents found in PgVector for query: {request.query}")
-            # Handle case where no documents are found
+            logger.warning(f"No documents found for query: {request.query} after initial retrieval and processing.")
             return EnergyQueryResponse(
                 query=request.query,
                 results=[],
@@ -153,34 +135,42 @@ async def query_energy_data(request: EnergyQueryRequest):
             )
 
     except Exception as e:
-        logger.error(f"Error fetching documents from database: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error fetching documents from database: {e}")
+        logger.error(f"Error fetching/processing documents via DualStorage: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error fetching or processing documents: {e}")
     
-    # Use explicit reranker type if specified, otherwise let controller decide
+    reranked_results_tuples: List[Tuple[RerankerDocument, float]] = [] 
+    reranker_name = "unknown"
+
     logger.info(f"Using reranker type: {request.reranker_type}")
     if request.reranker_type == "classical":
-        reranked_docs_tuples = controller.classical_reranker.rerank(request.query, retrieved_documents, top_k=request.limit)
+        reranked_results_tuples = controller.classical_reranker.rerank(request.query, retrieved_documents, top_k=request.limit)
         reranker_name = "classical"
     elif request.reranker_type == "quantum":
-        reranked_docs_tuples = controller.quantum_reranker.rerank(request.query, retrieved_documents, top_k=request.limit)
+        reranked_results_tuples = controller.quantum_reranker.rerank(request.query, retrieved_documents, top_k=request.limit)
         reranker_name = "quantum"
     else:  # Auto mode
-        # The controller.rerank method expects a list of RerankerDocument objects
         result = controller.rerank(request.query, retrieved_documents, top_k=request.limit)
-        reranked_docs_tuples = result["documents"] # This should be a list of (RerankerDocument, score)
-        reranker_name = result["reranker_used"] + " (auto-selected)"
+        if isinstance(result.get("documents"), list) and all(isinstance(item, tuple) and len(item) == 2 for item in result["documents"]):
+            reranked_results_tuples = result["documents"]
+        else:
+            logger.error(f"Auto reranker returned unexpected document structure: {result.get('documents')}")
+            reranked_results_tuples = [] 
+        reranker_name = result.get("reranker_used", "unknown") + " (auto-selected)"
     
-    logger.info(f"Reranking complete. Reranker used: {reranker_name}. Number of results: {len(reranked_docs_tuples)}")
+    logger.info(f"Reranking complete. Reranker used: {reranker_name}. Number of results from reranker: {len(reranked_results_tuples)}")
     
-    # Convert to response format
     results = []
-    # The rerank methods in classical_reranker and quantum_reranker return List[Tuple[RerankerDocument, float]]
-    # The controller.rerank also returns a similar structure under result["documents"]
-    for doc_tuple in reranked_docs_tuples:
-        doc, score = doc_tuple # Unpack the tuple
-        api_doc = Document(id=doc.id, content=doc.content, source=doc.source, metadata=doc.metadata)
-        results.append(QueryResult(document=api_doc, score=score, reranker_used=reranker_name))
-    
+    for doc_tuple in reranked_results_tuples: 
+        if isinstance(doc_tuple, tuple) and len(doc_tuple) == 2:
+            doc, score = doc_tuple
+            if isinstance(doc, RerankerDocument) and isinstance(score, (float, int)):
+                api_doc = Document(id=doc.id, content=doc.content, source=doc.source, metadata=doc.metadata)
+                results.append(QueryResult(document=api_doc, score=float(score), reranker_used=reranker_name))
+            else:
+                logger.warning(f"Skipping malformed reranked item: Type mismatch - Document: {type(doc)}, Score: {type(score)}")
+        else:
+            logger.warning(f"Skipping malformed reranked tuple: Expected (Document, float), got {type(doc_tuple)}")
+            
     response = EnergyQueryResponse(
         query=request.query,
         results=results,

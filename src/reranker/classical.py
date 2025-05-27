@@ -32,7 +32,7 @@ class ClassicalReranker:
         self.config = config or {}
         self.method = self.config.get("method", "cosine")
     
-    def rerank(self, query: str, documents: List[Document], top_k: int = None) -> List[Document]:
+    def rerank(self, query: str, documents: List[Document], top_k: int = None) -> List[Tuple[Document, float]]:
         """
         Rerank documents based on their relevance to the query using classical methods.
         
@@ -42,7 +42,7 @@ class ClassicalReranker:
             top_k: Number of documents to return after reranking
         
         Returns:
-            Reranked list of documents
+            Reranked list of (document, score) tuples
         """
         if not documents:
             return []
@@ -51,14 +51,13 @@ class ClassicalReranker:
         scored_docs = self._score_documents(query, documents)
         
         # Sort by score in descending order
-        reranked_docs = sorted(scored_docs, key=lambda x: x[1], reverse=True)
+        reranked_docs_with_scores = sorted(scored_docs, key=lambda x: x[1], reverse=True)
         
-        # Return top_k documents if specified
+        # Return top_k (document, score) tuples if specified
         if top_k is not None:
-            reranked_docs = reranked_docs[:top_k]
+            reranked_docs_with_scores = reranked_docs_with_scores[:top_k]
         
-        # Return just the documents without scores
-        return [doc for doc, _ in reranked_docs]
+        return reranked_docs_with_scores
     
     def _score_documents(self, query: str, documents: List[Document]) -> List[Tuple[Document, float]]:
         """
