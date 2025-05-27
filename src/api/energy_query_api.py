@@ -13,6 +13,9 @@ from pydantic import BaseModel, Field
 from src.reranker.classical import Document as RerankerDocument
 from src.reranker.quantum import QuantumReranker
 from src.reranker.controller import RerankerController
+from src.storage.pgvector_storage import PgVectorStorage # Added import
+from src.embeddings.embed_utils import get_embedding_provider, EmbeddingProvider # Added import
+import os # Added import for environment variables
 
 # Define schemas
 class Document(BaseModel):
@@ -54,6 +57,18 @@ router = APIRouter(
     prefix=""
 )
 
+# Initialize PgVectorStorage and EmbeddingProvider
+# These should ideally be managed with FastAPI's lifespan events or dependency injection for production
+try:
+    pg_storage = PgVectorStorage(app_environment=os.environ.get("APP_ENVIRONMENT", "prod"))
+    embed_provider = get_embedding_provider()
+except Exception as e:
+    # Log this error appropriately in a real application
+    print(f"Error initializing PgVectorStorage or EmbeddingProvider: {e}")
+    pg_storage = None
+    embed_provider = None
+
+
 @router.post("/query", response_model=EnergyQueryResponse)
 async def query_energy_data(request: EnergyQueryRequest):
     """
@@ -64,47 +79,86 @@ async def query_energy_data(request: EnergyQueryRequest):
     - quantum: Uses quantum circuit-based similarity
     - auto: Intelligently selects the best reranker for the query
     """
+    if not pg_storage or not embed_provider:
+        raise HTTPException(status_code=503, detail="Database or embedding service not available.")
+
     # Initialize controller that manages both rerankers
     controller = RerankerController({
         "classical_config": {"method": "cosine"},
         "quantum_config": {"method": "state_fidelity", "n_qubits": 4}
     })
     
-    # Mock documents for demo (would come from database in production)
-    mock_documents: List[RerankerDocument] = [
-        RerankerDocument(
-            id="ercot-2024-05-01",
-            content="ERCOT forecasted peak load for May 1, 2024: 58.2 GW. Actual load: 57.8 GW.",
-            source="ERCOT Daily Report",
-            metadata={"date": "2024-05-01", "type": "load_forecast"}
-        ),
-        RerankerDocument(
-            id="ercot-2024-05-02",
-            content="ERCOT forecasted peak load for May 2, 2024: 59.1 GW. Actual load: 60.3 GW.",
-            source="ERCOT Daily Report",
-            metadata={"date": "2024-05-02", "type": "load_forecast"}
-        ),
-        # Additional documents would be retrieved from database in production
-    ]
+    # 1. Generate embedding for the input query
+    try:
+        query_embedding_list = embed_provider.get_embeddings([request.query])
+        if not query_embedding_list:
+            raise HTTPException(status_code=500, detail="Failed to generate query embedding.")
+        query_embedding = query_embedding_list[0]
+    except Exception as e:
+        # Log error
+        raise HTTPException(status_code=500, detail=f"Error generating query embedding: {e}")
+
+    # 2. Find similar documents from PgVector
+    try:
+        # Assuming find_similar_embeddings returns (id, score)
+        # We need to fetch full document content based on these IDs.
+        # This part needs a way to get document content by ID.
+        # For now, let's assume find_similar_embeddings could be extended or
+        # we have another method to fetch documents.
+        # Let's simulate fetching documents for now, focusing on the pg_storage call.
+        
+        similar_docs_from_db = pg_storage.find_similar_embeddings(
+            query_embedding=query_embedding,
+            top_k=request.limit * 2, # Fetch more to allow reranking
+            metric="cosine" 
+        )
+        
+        # Mocking document retrieval based on IDs from pg_storage
+        # In a real scenario, you'd query your main database for content using these IDs.
+        retrieved_documents: List[RerankerDocument] = []
+        for doc_id, _ in similar_docs_from_db:
+            # This is a placeholder. You need to implement fetching document content by ID.
+            # For example, query another table or service.
+            # Here, we'll create dummy RerankerDocument objects.
+            # If your pg_storage also stores content or can join to get it, that would be ideal.
+            retrieved_documents.append(RerankerDocument(
+                id=str(doc_id), 
+                content=f"Content for {doc_id}", # Placeholder content
+                source="Database", # Placeholder source
+                metadata={"retrieved_from_pgvector": True} # Placeholder metadata
+            ))
+        
+        if not retrieved_documents:
+            # Handle case where no documents are found
+             return EnergyQueryResponse(
+                query=request.query,
+                results=[],
+                reranker_used="N/A - No documents found"
+            )
+
+    except Exception as e:
+        # Log error
+        raise HTTPException(status_code=500, detail=f"Error fetching documents from database: {e}")
     
     # Use explicit reranker type if specified, otherwise let controller decide
     if request.reranker_type == "classical":
-        reranked_docs = controller.classical_reranker.rerank(request.query, mock_documents, top_k=request.limit)
+        reranked_docs_tuples = controller.classical_reranker.rerank(request.query, retrieved_documents, top_k=request.limit)
         reranker_name = "classical"
     elif request.reranker_type == "quantum":
-        reranked_docs = controller.quantum_reranker.rerank(request.query, mock_documents, top_k=request.limit)
+        reranked_docs_tuples = controller.quantum_reranker.rerank(request.query, retrieved_documents, top_k=request.limit)
         reranker_name = "quantum"
     else:  # Auto mode
-        result = controller.rerank(request.query, mock_documents, top_k=request.limit)
-        reranked_docs = result["documents"]
+        # The controller.rerank method expects a list of RerankerDocument objects
+        result = controller.rerank(request.query, retrieved_documents, top_k=request.limit)
+        reranked_docs_tuples = result["documents"] # This should be a list of (RerankerDocument, score)
         reranker_name = result["reranker_used"] + " (auto-selected)"
     
     # Convert to response format
     results = []
-    for i, doc in enumerate(reranked_docs):
-        # In a real implementation, scores would come from the reranker
-        score = 1.0 - (i * 0.1)  # Placeholder scoring logic
-        # Create a new Document instance for the QueryResult
+    # The rerank methods in classical_reranker and quantum_reranker return List[Tuple[RerankerDocument, float]]
+    # The controller.rerank also returns a similar structure under result["documents"]
+    for doc_tuple in reranked_docs_tuples:
+        doc, score = doc_tuple # Unpack the tuple
         api_doc = Document(id=doc.id, content=doc.content, source=doc.source, metadata=doc.metadata)
         results.append(QueryResult(document=api_doc, score=score, reranker_used=reranker_name))
     
