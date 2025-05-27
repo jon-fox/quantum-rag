@@ -518,97 +518,185 @@ class PgVectorStorage:
     def find_similar_embeddings(
         self,
         query_embedding: np.ndarray,
-        top_k: int = 5,
-        metric: str = "cosine" 
+        top_k: int = 10,
+        metric: str = "cosine", # 'cosine', 'l2', 'inner_product'
+        # Optional: Add filter_metadata: Optional[Dict[str, Any]] = None
     ) -> List[Tuple[str, float]]:
         """
-        Finds embeddings similar to the query_embedding.
+        Finds similar embeddings to the query embedding.
 
         Args:
             query_embedding: The numpy array of the query embedding.
             top_k: The number of similar embeddings to return.
             metric: The distance metric to use ('cosine', 'l2', 'inner_product').
-                    'cosine' uses cosine distance (1 - cosine_similarity).
-                    'l2' uses Euclidean distance.
-                    'inner_product' uses inner product (negative for similarity with normalized vectors).
 
         Returns:
-            A list of tuples: (vector_id, distance_score).
-            Lower scores mean more similar for 'cosine' and 'l2'.
-            Higher scores mean more similar for 'inner_product' if vectors are normalized.
+            A list of tuples, where each tuple is (vector_id, similarity_score).
+            For cosine similarity, higher is better. For L2 distance, lower is better.
         """
         if not self.schema_initialized:
             logger.warning("Schema not initialized. Attempting to initialize now.")
             self._init_schema()
             if not self.schema_initialized:
-                 logger.error("Cannot find similar embeddings, schema not initialized and initialization failed.")
-                 return []
+                logger.error("Cannot find similar embeddings, schema not initialized and initialization failed.")
+                return []
 
         conn = self._get_connection()
         if not conn:
+            logger.error("Cannot find similar embeddings, no database connection.") # Added log
             return []
 
-        # pgvector operators:
-        # '<->' for L2 distance
-        # '<#>' for inner product (negative of inner product, so for similarity with normalized vectors, you'd want to order by this ASC)
-        # '<=>' for cosine distance (1 - cosine_similarity)
-        operator_map = {
-            "l2": "<->",
-            "inner_product": "<#>", # For normalized vectors, lower <#> is higher inner product (more similar)
-            "cosine": "<=>"
-        }
+        results: List[Tuple[str, float]] = []
+        try:
+            with conn.cursor() as cur:
+                # Ensure the query_embedding is a list for the SQL query
+                query_embedding_list = query_embedding.tolist()
+
+                if metric == "cosine":
+                    # Cosine distance: 1 - cosine_similarity. Lower is better.
+                    # pgvector operator <=> gives L2 distance by default.
+                    # For cosine similarity with HNSW/IVFFlat, index should be created with vector_cosine_ops.
+                    # The <=> operator then gives cosine distance (1 - similarity) when used with such an index.
+                    query = sql.SQL("""
+                        SELECT vector_id, embedding <=> CAST(%s AS vector) AS distance
+                        FROM {table}
+                        ORDER BY distance ASC
+                        LIMIT %s;
+                    """).format(table=sql.Identifier(self.table_name))
+                elif metric == "l2":
+                    # L2 distance (Euclidean)
+                    query = sql.SQL("""
+                        SELECT vector_id, embedding <-> CAST(%s AS vector) AS distance
+                        FROM {table}
+                        ORDER BY distance ASC
+                        LIMIT %s;
+                    """).format(table=sql.Identifier(self.table_name))
+                elif metric == "inner_product":
+                    # Inner product. For normalized vectors, inner product is equivalent to cosine similarity.
+                    # To maximize inner product (higher is better), we order by <#> DESC.
+                    # We cast to vector for the <#> operator as well for consistency and to avoid potential issues.
+                    query = sql.SQL("""
+                        SELECT vector_id, (embedding <#> CAST(%s AS vector)) * -1 AS negative_inner_product
+                        FROM {table}
+                        ORDER BY negative_inner_product ASC
+                        LIMIT %s;
+                    """).format(table=sql.Identifier(self.table_name))
+                else:
+                    logger.error(f"Unsupported metric: {metric}")
+                    return []
+
+                cur.execute(query, (query_embedding_list, top_k))
+                rows = cur.fetchall()
+                
+                if metric == "cosine":
+                    results = [(str(row[0]), float(row[1])) for row in rows]
+                elif metric == "inner_product":
+                    results = [(str(row[0]), float(-row[1])) for row in rows]
+                else: # L2 distance
+                    results = [(str(row[0]), float(row[1])) for row in rows]
+
+            logger.info(f"Found {len(results)} similar embeddings for metric {metric}.")
+        except psycopg2.Error as e:
+            logger.error(f"Error finding similar embeddings: {e}", exc_info=True) # Added exc_info
+            if conn and not conn.closed:
+                try: conn.rollback() 
+                except psycopg2.Error as rb_error: logger.error(f"Rollback failed: {rb_error}")
+            return [] # Return empty list on error
+        except Exception as e: # Catch any other unexpected errors
+            logger.error(f"An unexpected error occurred while finding similar embeddings: {e}", exc_info=True)
+            return [] # Return empty list on unexpected error
+        finally:
+            if conn and not conn.closed:
+                conn.close()
         
-        if metric not in operator_map:
-            logger.error(f"Unsupported similarity metric: {metric}. Supported: {list(operator_map.keys())}")
-            return []
+        return results
 
-        distance_operator = operator_map[metric]
-        query_embedding_list = query_embedding.tolist()
+    def get_embedding_by_id(self, vector_id: str) -> Optional[np.ndarray]:
+        """
+        Retrieves an embedding vector by its ID.
+
+        Args:
+            vector_id: The UUID string of the vector.
+
+        Returns:
+            The numpy array representing the embedding, or None if not found.
+        """
+        if not self.schema_initialized:
+            logger.warning("Schema not initialized. Attempting to initialize now.")
+            self._init_schema()
+            if not self.schema_initialized:
+                logger.error("Cannot retrieve embedding, schema not initialized and initialization failed.")
+                return None
+
+        conn = self._get_connection()
+        if not conn:
+            logger.error("Cannot retrieve embedding, no database connection.")
+            return None
+
+        result: Optional[np.ndarray] = None
+        try:
+            with conn.cursor() as cur:
+                query = sql.SQL("""
+                    SELECT embedding
+                    FROM {table}
+                    WHERE vector_id = %s;
+                """).format(table=sql.Identifier(self.table_name))
+
+                cur.execute(query, (vector_id,))
+                row = cur.fetchone()
+
+                if row is not None and len(row) > 0:
+                    # Assuming the embedding is the first column
+                    result = np.array(row[0])
+                    logger.info(f"Successfully retrieved embedding for vector_id: {vector_id}")
+                else:
+                    logger.warning(f"No embedding found for vector_id: {vector_id}")
+        except psycopg2.Error as e:
+            logger.error(f"Error retrieving embedding for vector_id {vector_id}: {e}")
+        finally:
+            if conn and not conn.closed:
+                conn.close()
+
+        return result
+
+    def delete_embedding_by_id(self, vector_id: str) -> bool:
+        """
+        Deletes an embedding vector by its ID.
+
+        Args:
+            vector_id: The UUID string of the vector.
+
+        Returns:
+            True if deletion was successful, False otherwise.
+        """
+        if not self.schema_initialized:
+            logger.warning("Schema not initialized. Attempting to initialize now.")
+            self._init_schema()
+            if not self.schema_initialized:
+                logger.error("Cannot delete embedding, schema not initialized and initialization failed.")
+                return False
+
+        conn = self._get_connection()
+        if not conn:
+            logger.error("Cannot delete embedding, no database connection.")
+            return False
 
         try:
             with conn.cursor() as cur:
-                # Note: The distance operator returns the distance.
-                # For cosine similarity, distance = 1 - similarity. So smaller distance is better.
-                # For inner product, it's negative inner product. Smaller (more negative) is better for similarity.
-                # For L2, smaller distance is better.
-                # So, always ORDER BY distance ASC.
-                
-                # Example: For IVFFlat, you might want to set probes:
-                # cur.execute("SET LOCAL ivfflat.probes = 10;") # Adjust as needed
+                query = sql.SQL("""
+                    DELETE FROM {table}
+                    WHERE vector_id = %s;
+                """).format(table=sql.Identifier(self.table_name))
 
-                similarity_query = sql.SQL("""
-                SELECT vector_id, embedding {operator} %s AS distance
-                FROM {table}
-                ORDER BY distance ASC
-                LIMIT %s;
-                """).format(
-                    operator=sql.SQL(distance_operator), # Safely inject operator
-                    table=sql.Identifier(self.table_name)
-                )
-                
-                cur.execute(similarity_query, (query_embedding_list, top_k))
-                results = cur.fetchall()
-                
-                # Convert to (vector_id, score)
-                # If using cosine distance, score = 1 - distance to get similarity
-                # If using L2, score is the distance
-                # If using inner product, score = -distance to get actual inner product
-                processed_results = []
-                for row in results:
-                    vector_id, distance = row
-                    score = distance
-                    if metric == "cosine":
-                        # score = 1 - distance # This would be cosine similarity
-                        pass # Keep as cosine distance for now, user can convert if needed
-                    elif metric == "inner_product":
-                        # score = -distance # This would be the actual inner product
-                        pass # Keep as negative inner product
-                    processed_results.append((vector_id, float(score)))
-
-                return processed_results
+                cur.execute(query, (vector_id,))
+            conn.commit()
+            logger.info(f"Successfully deleted embedding for vector_id: {vector_id}")
+            return True
         except psycopg2.Error as e:
-            logger.error(f"Error finding similar embeddings: {e}")
-            return []
+            logger.error(f"Error deleting embedding for vector_id {vector_id}: {e}")
+            if conn:
+                conn.rollback()
+            return False
         finally:
             if conn and not conn.closed:
                 conn.close()
