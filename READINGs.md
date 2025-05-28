@@ -319,7 +319,7 @@ Read? [  ]
 **Published**: 1998  
 **Summary**: Lays the foundation for fault-tolerant quantum computing through quantum error correction and the threshold theorem.  
 [Read the paper](https://arxiv.org/abs/quant-ph/9705031)
-Read? [  ]
+Read? [ X ]
 
 ### Recent Foundational Quantum Computing Papers (2023–2024)
 
