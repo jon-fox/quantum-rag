@@ -412,4 +412,3 @@ Read? [  ]
 **Summary**: Reviews the current landscape of quantum computing and outlines challenges related to hardware, middleware, and scalability.  
 [Read the paper](https://www.mdpi.com/2624-960X/6/4/39)
 Read? [  ]
-
