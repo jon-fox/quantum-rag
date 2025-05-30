@@ -21,11 +21,12 @@ Here are 10 high-quality, accessible research papers and articles that delve int
    ---
 
 3. **Enhancing RAG Pipelines with Re-Ranking**
+   # really a tutorial to be honest, not relevant
    *Author*: Amit Bleiweiss
    *Published*: July 30, 2024
    *Summary*: Discusses the role of re-ranking in improving the precision and relevance of enterprise search results within RAG pipelines.
    [Read the article](https://developer.nvidia.com/blog/enhancing-rag-pipelines-with-re-ranking/)
-   Read? [  ]
+   Read? [ X ]
    ---
 
 4. **Quantum Computing in Retrieval Augmented Generation (RAG) for Large Language Models (LLMs): A Leap Forward**
