@@ -2,6 +2,7 @@ Here are 10 high-quality, accessible research papers and articles that delve int
 
 ---
 
+# High Relevancy
 1. **DynamicRAG: Leveraging Outputs of Large Language Model as Feedback for Dynamic Reranking in Retrieval-Augmented Generation**
    *Authors*: Jiashuo Sun, Xianrui Zhong, Sizhe Zhou, Jiawei Han
    *Published*: May 12, 2025
@@ -10,6 +11,7 @@ Here are 10 high-quality, accessible research papers and articles that delve int
    Read? [ X ]
    ---
 
+# High Relevancy
 2. **HyperRAG: Enhancing Quality-Efficiency Tradeoffs in Retrieval-Augmented Generation with Reranker KV-Cache Reuse**
    *Authors*: Yuwei An, Yihua Cheng, Seo Jin Park, Junchen Jiang
    *Published*: April 3, 2025
@@ -20,6 +22,7 @@ Here are 10 high-quality, accessible research papers and articles that delve int
    Notes - https://github.com/LMCache/LMCache - caching mechanism for llm KV
    ---
 
+# Low Relevancy
 3. **Enhancing RAG Pipelines with Re-Ranking**
    # really a tutorial to be honest, not relevant
    *Author*: Amit Bleiweiss
@@ -84,11 +87,13 @@ Here are 10 high-quality, accessible research papers and articles that delve int
 
 # Read both 1 was a bit minimal, the other was super relevant and interesting
 # essentially using QIR for ranking image based queries
+# Low Relevancy
 11. **https://link.springer.com/chapter/10.1007/978-3-642-20161-5_79**
    *Professor related reading, requires subscription*
    Read? [ X ]
    ---
 
+# High Relevancy
 12. **https://ieeexplore.ieee.org/document/9939296**
    *Professor related reading, requires subscription*
    Read? [ X ]
@@ -258,6 +263,7 @@ Here are 10 high-quality, accessible research papers and articles that delve int
     Read? [  ]
     ---
 
+# Not exactly relevant but interesting end to end
 21. **DeepSeek-VL: Towards Language Agents with Visual Perception and Programmable Reasoning**
    *Authors*: DeepSeek-VL Team (Yizhi Wang, Haotian Zhang, Jiacheng Yang, et al.)
    *Published*: May 2024
@@ -315,6 +321,7 @@ Read? [  ]
 
 ---
 
+# High Relevancy, paper was great, essential for building accurate quantum apps
 #### 6. **Reliable Quantum Computers**  
 **Author**: John Preskill  
 **Published**: 1998  
@@ -322,8 +329,8 @@ Read? [  ]
 [Read the paper](https://arxiv.org/abs/quant-ph/9705031)
 Read? [ X ]
 
-### Recent Foundational Quantum Computing Papers (2023–2024)
 
+### Recent Foundational Quantum Computing Papers (2023–2024)
 ---
 
 #### 1. **Quantum Algorithms: A Survey of Applications and End-to-End Complexities**  
@@ -335,6 +342,7 @@ Read? [  ]
 
 ---
 
+# High Relevancy, foundational concepts
 #### 2. **Quantum Computing: Principles and Applications**  
 **Authors**: Not specified  
 **Published**: October 2023  
