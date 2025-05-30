@@ -81,14 +81,16 @@ Here are 10 high-quality, accessible research papers and articles that delve int
     Read? [  ]
     ---
 
+# Read both 1 was a bit minimal, the other was super relevant and interesting
+# essentially using QIR for ranking image based queries
 11. **https://link.springer.com/chapter/10.1007/978-3-642-20161-5_79**
    *Professor related reading, requires subscription*
-   Read? [  ]
+   Read? [ X ]
    ---
 
 12. **https://ieeexplore.ieee.org/document/9939296**
    *Professor related reading, requires subscription*
-   Read? [  ]
+   Read? [ X ]
    ---
 
 
@@ -254,8 +256,6 @@ Here are 10 high-quality, accessible research papers and articles that delve int
     [Read the paper](https://arxiv.org/abs/1603.08675)
     Read? [  ]
     ---
-
-Here’s a nicely formatted reference for the DeepSeek paper, suitable for a README or literature review:
 
 21. **DeepSeek-VL: Towards Language Agents with Visual Perception and Programmable Reasoning**
    *Authors*: DeepSeek-VL Team (Yizhi Wang, Haotian Zhang, Jiacheng Yang, et al.)
