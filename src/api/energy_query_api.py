@@ -1,22 +1,21 @@
 """
-FastAPI endpoints for querying ERCOT energy data using quantum-enhanced reranking.
+FastAPI endpoints for querying ERCOT energy data using simplified PostgreSQL vector search.
 This API provides endpoints for:
-1. Semantic search on energy data using vector embeddings
+1. Direct cosine similarity search on energy data using pgvector
 2. Comparing classical vs quantum reranking of energy forecast analysis
 """
-import json
 import numpy as np
-from typing import Dict, Any, List, Optional, Tuple # Ensured Tuple is imported
-from fastapi import APIRouter, HTTPException, Depends
+from typing import Dict, Any, List, Optional, Tuple
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 import logging
+import os
 
 from src.reranker.classical import Document as RerankerDocument
 from src.reranker.quantum import QuantumReranker
 from src.reranker.controller import RerankerController
-from src.storage.dual_storage import DualStorage # Assuming src.storage.dual_storage is resolvable at runtime
 from src.embeddings.embed_utils import get_embedding_provider, EmbeddingProvider
-import os
+from src.storage.pgvector_storage import PgVectorStorage
 
 # Initialize logger early
 logger = logging.getLogger(__name__)
@@ -56,33 +55,36 @@ class EnergyQueryResponse(BaseModel):
     query: str
     results: List[QueryResult]
     reranker_used: str
-    # Add a field for detailed_error for debugging if needed
-    # detailed_error: Optional[str] = None 
 
 # Create router
-router = APIRouter(
-    prefix="" # Consider adding a prefix like "/api/v1"
-)
+router = APIRouter()
 
-# Initialize DualStorage and EmbeddingProvider
-dual_storage_manager: Optional[DualStorage] = None
+# Initialize PostgreSQL storage and EmbeddingProvider
+pg_storage: Optional[PgVectorStorage] = None
 embed_provider: Optional[EmbeddingProvider] = None
 
 try:
-    dual_storage_manager = DualStorage()
-    embed_provider = get_embedding_provider()
-    logger.info("DualStorage and EmbeddingProvider initialized successfully.")
+    pg_storage = PgVectorStorage(
+        app_environment=os.environ.get("APP_ENVIRONMENT", "prod")
+    )
+    logger.info("PgVectorStorage initialized successfully.")
 except Exception as e:
-    logger.critical(f"CRITICAL: Error initializing DualStorage or EmbeddingProvider: {e}", exc_info=True)
-    # dual_storage_manager and embed_provider remain None, caught by endpoint check
+    logger.critical(f"CRITICAL: Error initializing PgVectorStorage: {e}", exc_info=True)
+
+try:
+    embed_provider = get_embedding_provider()
+    logger.info("EmbeddingProvider initialized successfully.")
+except Exception as e:
+    logger.critical(f"CRITICAL: Error initializing EmbeddingProvider: {e}", exc_info=True)
 
 
 @router.post("/query", response_model=EnergyQueryResponse)
 async def query_energy_data(request: EnergyQueryRequest):
+    """Query energy data using simplified PostgreSQL vector search."""
     logger.info(f"Received query request: {request.model_dump_json()}")
 
-    if not dual_storage_manager or not embed_provider:
-        logger.error("DualStorage or EmbeddingProvider not initialized. Check startup logs.")
+    if not pg_storage or not embed_provider:
+        logger.error("PostgreSQL storage or EmbeddingProvider not initialized. Check startup logs.")
         raise HTTPException(status_code=503, detail="Core services (database/embedding) not available.")
 
     controller = RerankerController({
@@ -90,6 +92,7 @@ async def query_energy_data(request: EnergyQueryRequest):
         "quantum_config": {"method": "state_fidelity", "n_qubits": 4}
     })
     
+    # Generate query embedding
     try:
         query_embedding_array = embed_provider.get_embeddings([request.query])
         if not isinstance(query_embedding_array, np.ndarray) or query_embedding_array.ndim == 0 or query_embedding_array.size == 0:
@@ -101,33 +104,35 @@ async def query_energy_data(request: EnergyQueryRequest):
         logger.error(f"Error generating query embedding: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error generating query embedding: {e}")
 
+    # Query PostgreSQL directly using pgvector cosine similarity
     try:
-        similar_docs_with_metadata = dual_storage_manager.find_similar_documents(
+        similar_docs = pg_storage.find_similar_documents(
             query_embedding=query_embedding,
-            top_k=request.limit * 2, 
-            metric="cosine" 
+            top_k=request.limit * 2,  # Get extra for reranking
+            metric="cosine"
         )
-        logger.info(f"Retrieved {len(similar_docs_with_metadata)} documents with metadata via DualStorage for query: {request.query}")
+        logger.info(f"Retrieved {len(similar_docs)} documents from PostgreSQL for query: {request.query}")
         
+        # Convert to RerankerDocument format
         retrieved_documents: List[RerankerDocument] = []
-        for doc_info in similar_docs_with_metadata:
+        for doc_info in similar_docs:
             metadata = doc_info.get("metadata", {})
-            content = metadata.get("content") or metadata.get("summary", f"Content for {doc_info.get('document_id', 'N/A')}")
+            content = metadata.get("content") or metadata.get("semantic_sentence", "")
             if not content:
-                 logger.warning(f"Document ID {doc_info.get('document_id')} missing 'content' and 'summary' field in metadata, using placeholder.")
-                 content = f"Placeholder content for document {doc_info.get('document_id', 'N/A')}"
+                logger.warning(f"Document ID {doc_info.get('vector_id')} missing content, using placeholder.")
+                content = f"Placeholder content for document {doc_info.get('vector_id', 'N/A')}"
 
             retrieved_documents.append(RerankerDocument(
-                id=str(doc_info.get("document_id", doc_info.get("vector_id"))),
+                id=str(doc_info.get("vector_id", doc_info.get("document_id"))),
                 content=content,
-                source=metadata.get("source", "DualStorage"), 
+                source=metadata.get("source", "PostgreSQL"),
                 metadata=metadata
             ))
         
         logger.info(f"Processed {len(retrieved_documents)} documents for reranking.")
         
         if not retrieved_documents:
-            logger.warning(f"No documents found for query: {request.query} after initial retrieval and processing.")
+            logger.warning(f"No documents found for query: {request.query}")
             return EnergyQueryResponse(
                 query=request.query,
                 results=[],
@@ -135,9 +140,10 @@ async def query_energy_data(request: EnergyQueryRequest):
             )
 
     except Exception as e:
-        logger.error(f"Error fetching/processing documents via DualStorage: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error fetching or processing documents: {e}")
+        logger.error(f"Error fetching documents from PostgreSQL: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error fetching documents: {e}")
     
+    # Apply reranking
     reranked_results_tuples: List[Tuple[RerankerDocument, float]] = [] 
     reranker_name = "unknown"
 
@@ -157,8 +163,9 @@ async def query_energy_data(request: EnergyQueryRequest):
             reranked_results_tuples = [] 
         reranker_name = result.get("reranker_used", "unknown") + " (auto-selected)"
     
-    logger.info(f"Reranking complete. Reranker used: {reranker_name}. Number of results from reranker: {len(reranked_results_tuples)}")
+    logger.info(f"Reranking complete. Reranker used: {reranker_name}. Number of results: {len(reranked_results_tuples)}")
     
+    # Format final results
     results = []
     for doc_tuple in reranked_results_tuples: 
         if isinstance(doc_tuple, tuple) and len(doc_tuple) == 2:
@@ -181,6 +188,28 @@ async def query_energy_data(request: EnergyQueryRequest):
 
 @router.get("/health")
 async def health_check():
-    """Simple health check endpoint."""
-    return {"status": "ok", "service": "quantum-energy-rag"}
+    """Simple health check endpoint for the simplified PostgreSQL-only service."""
+    db_healthy = pg_storage is not None
+    embed_healthy = embed_provider is not None
+    
+    if db_healthy and embed_healthy:
+        try:
+            # Test database connection with a simple query
+            conn = pg_storage._get_connection()
+            if conn and not conn.closed:
+                status = "healthy"
+            else:
+                status = "unhealthy - database connection failed"
+        except Exception as e:
+            logger.warning(f"Health check database test failed: {e}")
+            status = "unhealthy - database test failed"
+    else:
+        details = []
+        if not db_healthy:
+            details.append("PostgreSQL storage not initialized")
+        if not embed_healthy:
+            details.append("Embedding provider not initialized")
+        status = f"unhealthy - {'; '.join(details)}"
+    
+    return {"status": status, "service": "quantum-energy-rag-simplified"}
 
