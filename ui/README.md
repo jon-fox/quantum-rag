@@ -47,7 +47,8 @@ The app is configured to connect to FastAPI at `http://localhost:8000` by defaul
 
 ## Example Queries
 
-- "forecast vs actual load during summer peak hours"
-- "energy efficiency trends renewable sources"
-- "peak demand analysis winter season"
-- "solar energy generation patterns"
+* forecast vs actual telemetry generation in May–June 2025 during peak hours (2–7 PM)
+* renewable contribution trends in ERCOT: wind vs solar breakdown May–June 2025
+* ERCOT demand spikes: comparison of base-point and dispatchable generation May–June 2025
+* daily solar generation variation and its correlation with average Texas temperature in May–June 2025
+

@@ -38,7 +38,7 @@ class EnergyQueryRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "query": "forecast vs actual load during summer peak hours",
+                "query": "difference between DAM forecast and telemetry generation in May and June 2025 during afternoon peak",
                 "limit": 5,
                 "reranker_type": "auto"
             }

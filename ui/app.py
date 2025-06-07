@@ -78,7 +78,7 @@ def main():
     # Query input
     query = st.text_input(
         "Enter your energy-related query:",
-        placeholder="e.g., forecast vs actual load during summer peak hours",
+        placeholder="e.g., difference between DAM forecast and telemetry generation in May and June 2025 during afternoon peak",
         help="Enter a natural language query about energy data, forecasts, or efficiency"
     )
     
