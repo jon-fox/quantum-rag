@@ -7,6 +7,12 @@ retrieved documents based on their relevance to the input query.
 from typing import List, Dict, Any, Tuple
 import numpy as np
 import logging
+import torch
+from sentence_transformers import CrossEncoder
+
+# Initialize Cross-Encoder model
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device=device)
 
 # Define Document class locally to avoid import issues
 class Document:
@@ -34,7 +40,7 @@ class ClassicalReranker:
     
     def rerank(self, query: str, documents: List[Document], top_k: int = None) -> List[Tuple[Document, float]]:
         """
-        Rerank documents based on their relevance to the query using classical methods.
+        Rerank documents based on their relevance to the query using Cross-Encoder.
         
         Args:
             query: The search query
@@ -47,8 +53,14 @@ class ClassicalReranker:
         if not documents:
             return []
         
-        # Score documents using chosen method
-        scored_docs = self._score_documents(query, documents)
+        # Build inputs for Cross-Encoder as (query, document_content) pairs
+        inputs = [(query, doc.content) for doc in documents]
+        
+        # Get scores from Cross-Encoder model
+        scores = model.predict(inputs)
+        
+        # Zip scores back onto documents
+        scored_docs = list(zip(documents, scores))
         
         # Sort by score in descending order
         reranked_docs_with_scores = sorted(scored_docs, key=lambda x: x[1], reverse=True)
@@ -58,56 +70,3 @@ class ClassicalReranker:
             reranked_docs_with_scores = reranked_docs_with_scores[:top_k]
         
         return reranked_docs_with_scores
-    
-    def _score_documents(self, query: str, documents: List[Document]) -> List[Tuple[Document, float]]:
-        """
-        Score documents based on their relevance to the query.
-        
-        Args:
-            query: The search query
-            documents: List of retrieved documents to score
-            
-        Returns:
-            List of (document, score) tuples
-        """
-        # Implement scoring logic based on the method
-        if self.method == "cosine":
-            # Simple cosine similarity placeholder
-            # In a real implementation, this would use embedded vectors
-            return self._simple_text_similarity(query, documents)
-        elif self.method == "bm25":
-            # BM25 scoring could be implemented here
-            return self._simple_text_similarity(query, documents)
-        else:
-            # Default fallback scoring
-            return self._simple_text_similarity(query, documents)
-    
-    def _simple_text_similarity(self, query: str, documents: List[Document]) -> List[Tuple[Document, float]]:
-        """
-        Simple text similarity scoring based on word overlap.
-        This is a placeholder for more sophisticated embedding-based similarity.
-        
-        Args:
-            query: The search query
-            documents: List of documents to score
-            
-        Returns:
-            List of (document, score) tuples
-        """
-        query_words = set(query.lower().split())
-        
-        scored_docs = []
-        for doc in documents:
-            doc_words = set(doc.content.lower().split())
-            
-            # Calculate Jaccard similarity
-            if not query_words or not doc_words:
-                score = 0.0
-            else:
-                intersection = len(query_words.intersection(doc_words))
-                union = len(query_words.union(doc_words))
-                score = intersection / union if union > 0 else 0.0
-                
-            scored_docs.append((doc, score))
-            
-        return scored_docs

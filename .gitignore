@@ -41,6 +41,7 @@ credentials.txt
 
 # Log files
 *.log
+nohup.out
 
 # Compiled Python modules
 *.so
