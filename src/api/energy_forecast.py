@@ -2,7 +2,7 @@
 FastAPI endpoint for energy forecasting using retrieval and classical reranking.
 """
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from openai import OpenAI
 import os
 import logging
@@ -10,18 +10,26 @@ import logging
 from src.storage.pgvector_storage import PgVectorStorage
 from src.reranker.classical import ClassicalReranker, Document
 from src.embeddings.embed_utils import get_embedding_provider
+from src.prompts.energy_forecast import build_energy_forecast_prompt
 
 logger = logging.getLogger(__name__)
 
 # Request/Response schemas
 class ForecastRequest(BaseModel):
-    query: str
+    query: str = Field(..., description="Natural language query for energy forecasting analysis")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "query": "difference between DAM forecast and telemetry generation in May and June 2025 during afternoon peak"
+            }
+        }
 
 class ForecastResponse(BaseModel):
     forecast: str
 
 # Create router
-forecast_router = APIRouter(prefix="/energy/forecast")
+router = APIRouter()
 
 # Initialize services
 pg_storage = PgVectorStorage(app_environment=os.environ.get("APP_ENVIRONMENT", "prod"))
@@ -31,7 +39,7 @@ classical_reranker = ClassicalReranker()
 # Initialize OpenAI client
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-@forecast_router.post("/", response_model=ForecastResponse)
+@router.post("/", response_model=ForecastResponse)
 async def generate_energy_forecast(request: ForecastRequest):
     """Generate energy forecast using retrieval, reranking, and LLM analysis."""
     
@@ -65,20 +73,8 @@ async def generate_energy_forecast(request: ForecastRequest):
         # Rerank and get top 5
         reranked_results = classical_reranker.rerank(request.query, documents, top_k=5)
         
-        # Build prompt with top 5 summaries
-        prompt = f"""You're an energy analyst. Based on the following query and top relevant data points, provide a 150-word human-readable forecast highlighting load vs telemetry trends.
-
-                Query: {request.query}
-
-                Top 5 Relevant Data Points:
-                """
-        
-        for i, (doc, score) in enumerate(reranked_results[:5], 1):
-            # Extract date and key metrics from document content
-            content_preview = doc.content[:200] + "..." if len(doc.content) > 200 else doc.content
-            prompt += f"{i}. {content_preview}\n"
-        
-        prompt += "\nProvide a concise 150-word forecast focusing on load vs telemetry trends:"
+        # Build prompt using the template
+        prompt = build_energy_forecast_prompt(request.query, reranked_results)
         
         # Call OpenAI API
         response = client.chat.completions.create(
