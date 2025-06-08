@@ -10,6 +10,7 @@ import logging
 import torch
 import time
 import re
+import os
 from sentence_transformers import CrossEncoder
 
 logger = logging.getLogger(__name__)
@@ -56,13 +57,38 @@ class ClassicalReranker:
     def _initialize_model(self):
         """Initialize the Cross-Encoder model with fallback handling."""
         try:
+            # Check for common HuggingFace token environment variable names
+            hf_token = os.getenv('HUGGINGFACE_HUB_TOKEN') or os.getenv('HUGGINGFACE_API_TOKEN') or os.getenv('HF_TOKEN')
+            
+            if hf_token:
+                from huggingface_hub import login
+                login(token=hf_token)
+                logger.info("Successfully authenticated with Hugging Face")
+            else:
+                logger.warning("No Hugging Face token found in environment variables")
+                
             self.model = CrossEncoder(self.model_name, device=self.device)
             self.model_loaded = True
             logger.info(f"Successfully loaded Cross-Encoder model '{self.model_name}' on device '{self.device}'")
         except Exception as e:
             logger.error(f"Failed to load Cross-Encoder model: {e}")
-            self.model_loaded = False
-            # Could implement fallback to lighter model here
+            
+            # Try alternative models that don't require authentication
+            fallback_models = [
+                "cross-encoder/ms-marco-TinyBERT-L-2-v2",  # Smaller, more likely to be public
+                "cross-encoder/ms-marco-MiniLM-L-2-v2",    # Even smaller version
+            ]
+            
+            for fallback_model in fallback_models:
+                try:
+                    logger.info(f"Trying fallback model: {fallback_model}")
+                    self.model = CrossEncoder(fallback_model, device=self.device)
+                    self.model_name = fallback_model  # Update model name
+                    self.model_loaded = True
+                    logger.info(f"Successfully loaded fallback Cross-Encoder model '{fallback_model}' on device '{self.device}'")
+                    return
+                except Exception as fallback_e:
+                    logger.warning(f"Fallback model {fallback_model} also failed: {fallback_e}")
     
     def _sanitize_text(self, text: str) -> str:
         """Clean and truncate text to avoid input issues."""
@@ -125,10 +151,11 @@ class ClassicalReranker:
         raise RuntimeError("All retry attempts failed")
     
     def _handle_reranker_failure(self, query: str, documents: List[Document]) -> List[Tuple[Document, float]]:
-        """Handle reranker failure by logging and returning empty results."""
-        logger.error("Cross-Encoder reranking failed completely - no fallback available")
+        """Handle reranker failure by logging and returning original documents with neutral scores."""
+        logger.error("Cross-Encoder reranking failed - returning original document order with neutral scores")
         logger.error(f"Failed to rerank {len(documents)} documents for query: {query[:100]}...")
-        return []
+        # Return original documents with neutral scores (0.5) to indicate no reranking occurred
+        return [(doc, 0.5) for doc in documents]
     
     def rerank(self, query: str, documents: List[Document], top_k: Optional[int] = None) -> List[Tuple[Document, float]]:
         """
@@ -146,7 +173,8 @@ class ClassicalReranker:
         
         # Input validation
         if not self._validate_inputs(query, documents):
-            return []
+            logger.error("Input validation failed - returning original documents with neutral scores")
+            return [(doc, 0.5) for doc in documents]
         
         # Sanitize inputs
         query = self._sanitize_text(query)
