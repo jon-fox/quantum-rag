@@ -13,6 +13,10 @@ from dotenv import load_dotenv
 # Try to load environment variables
 load_dotenv()
 
+# Disable progress bars to prevent long log lines
+os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = '1'
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -172,7 +176,8 @@ class SentenceTransformerEmbedding(EmbeddingProvider):
             uncached_texts = [texts[i] for i in uncached_indices]
             
             try:
-                embeddings = self.model.encode(uncached_texts)
+                # Disable progress bar to prevent long log lines
+                embeddings = self.model.encode(uncached_texts, show_progress_bar=False)
                 
                 for i, embedding in enumerate(embeddings):
                     # Store in cache

@@ -10,7 +10,7 @@ import logging
 from src.storage.pgvector_storage import PgVectorStorage
 from src.reranker.classical import ClassicalReranker, Document
 from src.embeddings.embed_utils import get_embedding_provider
-from src.prompts.energy_forecast import build_energy_forecast_prompt
+from src.prompts.builders import build_energy_forecast_prompt
 
 logger = logging.getLogger(__name__)
 

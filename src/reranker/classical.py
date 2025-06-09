@@ -11,6 +11,13 @@ import torch
 import time
 import re
 import os
+
+# Disable tqdm progress bars to prevent long log lines
+os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = '1'
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+import warnings
+warnings.filterwarnings('ignore', category=UserWarning, module='transformers')
+
 from sentence_transformers import CrossEncoder
 
 logger = logging.getLogger(__name__)
@@ -136,7 +143,8 @@ class ClassicalReranker:
         for attempt in range(self.max_retries):
             try:
                 start_time = time.time()
-                scores = self.model.predict(inputs)
+                # Disable tqdm progress bars by setting show_progress_bar=False
+                scores = self.model.predict(inputs, show_progress_bar=False)
                 elapsed_time = time.time() - start_time
                 
                 logger.debug(f"Cross-Encoder prediction completed in {elapsed_time:.2f}s for {len(inputs)} pairs")
