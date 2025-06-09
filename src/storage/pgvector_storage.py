@@ -196,7 +196,9 @@ class PgVectorStorage:
         self,
         query_embedding: np.ndarray,
         top_k: int = 10,
-        metric: str = "cosine"
+        metric: str = "cosine",
+        intent_filters: Optional[Dict[str, Any]] = None,
+        sort_strategy: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         conn = self._get_connection()
         if not conn:
@@ -207,42 +209,109 @@ class PgVectorStorage:
         try:
             with conn.cursor() as cur:
                 query_embedding_list = query_embedding.tolist()
-
+                
+                # Build base query with intent-aware filtering
+                base_select = "SELECT vector_id, semantic_sentence, updated_at"
+                base_from = f"FROM {self.table_name}"
+                where_conditions = []
+                order_clause = ""
+                
+                # Add distance calculation based on metric
                 if metric == "cosine":
-                    query = sql.SQL("""
-                        SELECT vector_id, semantic_sentence, updated_at, embedding <=> CAST(%s AS vector) AS distance
-                        FROM {table}
-                        ORDER BY distance ASC
-                        LIMIT %s;
-                    """).format(table=sql.Identifier(self.table_name))
+                    distance_calc = "embedding <=> CAST(%s AS vector) AS distance"
+                    base_select += f", {distance_calc}"
+                    default_order = "ORDER BY distance ASC"
                 elif metric == "l2":
-                    query = sql.SQL("""
-                        SELECT vector_id, semantic_sentence, updated_at, embedding <-> CAST(%s AS vector) AS distance
-                        FROM {table}
-                        ORDER BY distance ASC
-                        LIMIT %s;
-                    """).format(table=sql.Identifier(self.table_name))
+                    distance_calc = "embedding <-> CAST(%s AS vector) AS distance"
+                    base_select += f", {distance_calc}"
+                    default_order = "ORDER BY distance ASC"
                 elif metric == "inner_product":
-                    query = sql.SQL("""
-                        SELECT vector_id, semantic_sentence, updated_at, (embedding <#> CAST(%s AS vector)) * -1 AS negative_inner_product
-                        FROM {table}
-                        ORDER BY negative_inner_product ASC
-                        LIMIT %s;
-                    """).format(table=sql.Identifier(self.table_name))
+                    distance_calc = "(embedding <#> CAST(%s AS vector)) * -1 AS negative_inner_product"
+                    base_select += f", {distance_calc}"
+                    default_order = "ORDER BY negative_inner_product ASC"
                 else:
                     logger.error(f"Unsupported metric: {metric}")
                     return []
-
-                cur.execute(query, (query_embedding_list, top_k))
+                
+                # Apply intent-based filters
+                query_params = [query_embedding_list]
+                
+                if intent_filters:
+                    # Time-based filtering
+                    if intent_filters.get('recent_priority'):
+                        where_conditions.append("updated_at >= NOW() - INTERVAL '30 days'")
+                    elif intent_filters.get('exclude_old_data'):
+                        where_conditions.append("updated_at >= NOW() - INTERVAL '90 days'")
+                    
+                    # Content-based filtering for keywords
+                    keywords = intent_filters.get('keywords', [])
+                    if keywords:
+                        keyword_conditions = []
+                        for keyword in keywords:
+                            keyword_conditions.append("LOWER(semantic_sentence) LIKE %s")
+                            query_params.append(f"%{keyword.lower()}%")
+                        if keyword_conditions:
+                            where_conditions.append(f"({' OR '.join(keyword_conditions)})")
+                    
+                    # Date range filtering
+                    date_info = intent_filters.get('date_info', {})
+                    if date_info.get('months'):
+                        month_conditions = []
+                        for month in date_info['months']:
+                            month_conditions.append("EXTRACT(MONTH FROM updated_at) = %s")
+                            month_num = {
+                                'january': 1, 'february': 2, 'march': 3, 'april': 4,
+                                'may': 5, 'june': 6, 'july': 7, 'august': 8,
+                                'september': 9, 'october': 10, 'november': 11, 'december': 12
+                            }.get(month.lower())
+                            if month_num:
+                                query_params.append(month_num)
+                        if month_conditions:
+                            where_conditions.append(f"({' OR '.join(month_conditions)})")
+                    
+                    if date_info.get('years'):
+                        year_conditions = []
+                        for year in date_info['years']:
+                            year_conditions.append("EXTRACT(YEAR FROM updated_at) = %s")
+                            query_params.append(int(year))
+                        if year_conditions:
+                            where_conditions.append(f"({' OR '.join(year_conditions)})")
+                
+                # Apply sort strategy
+                if sort_strategy == 'chronological':
+                    order_clause = "ORDER BY updated_at ASC"
+                elif sort_strategy == 'recency_weighted_similarity':
+                    if metric == "cosine":
+                        order_clause = "ORDER BY (distance + (EXTRACT(EPOCH FROM (NOW() - updated_at)) / 86400.0) * 0.01) ASC"
+                    else:
+                        order_clause = default_order
+                elif sort_strategy == 'extreme_values_first':
+                    # For outlier detection, we'll still use similarity but could enhance this
+                    order_clause = default_order
+                else:
+                    order_clause = default_order
+                
+                # Build final query
+                where_clause = f"WHERE {' AND '.join(where_conditions)}" if where_conditions else ""
+                limit_clause = f"LIMIT %s"
+                query_params.append(top_k)
+                
+                final_query = f"{base_select} {base_from} {where_clause} {order_clause} {limit_clause}"
+                
+                logger.info(f"Executing intent-aware query with {len(where_conditions)} filters, sort_strategy: {sort_strategy}")
+                cur.execute(final_query, query_params)
                 rows = cur.fetchall()
                 
                 for row in rows:
+                    # Calculate similarity score based on metric
                     if metric == "cosine":
-                        similarity_score = 1.0 - float(row[3])
+                        similarity_score = 1.0 - float(row[3])  # Convert distance to similarity
+                    elif metric == "l2":
+                        similarity_score = float(row[3])  # Keep as distance
                     elif metric == "inner_product":
-                        similarity_score = float(-row[3])
-                    else:  # L2 distance
-                        similarity_score = float(row[3])
+                        similarity_score = float(-row[3])  # Convert back from negative
+                    else:
+                        similarity_score = 0.0
                     
                     results.append({
                         "vector_id": str(row[0]),
@@ -251,10 +320,14 @@ class PgVectorStorage:
                             "content": str(row[1]) if row[1] else "",
                             "semantic_sentence": str(row[1]) if row[1] else "",
                             "updated_at": row[2] if row[2] else None,
-                            "source": "PostgreSQL"
+                            "source": "PostgreSQL",
+                            "intent_filtered": bool(intent_filters),
+                            "sort_strategy": sort_strategy or "similarity_only"
                         },
                         "similarity_score": similarity_score
                     })
+                
+                logger.info(f"Retrieved {len(results)} documents using intent-aware filtering")
 
         except psycopg2.Error as e:
             logger.error(f"Error finding similar documents: {e}")

@@ -60,7 +60,9 @@ async def generate_energy_forecast(request: ForecastRequest):
         similar_docs = pg_storage.find_similar_documents(
             query_embedding=query_embedding,
             top_k=strategy['num_documents'],  # Dynamic document count based on intent
-            metric="cosine"
+            metric="cosine",
+            intent_filters=strategy.get('query_filters'),
+            sort_strategy=strategy.get('sort_strategy')
         )
         
         # Convert to Document format for reranking
