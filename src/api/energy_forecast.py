@@ -11,6 +11,7 @@ from src.storage.pgvector_storage import PgVectorStorage
 from src.reranker.classical import ClassicalReranker, Document
 from src.embeddings.embed_utils import get_embedding_provider
 from src.prompts.builders import build_energy_forecast_prompt
+from src.query_intent import QueryIntentClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ router = APIRouter()
 pg_storage = PgVectorStorage(app_environment=os.environ.get("APP_ENVIRONMENT", "prod"))
 embed_provider = get_embedding_provider()
 classical_reranker = ClassicalReranker()
+intent_classifier = QueryIntentClassifier()
 
 # Initialize OpenAI client
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
@@ -47,13 +49,17 @@ async def generate_energy_forecast(request: ForecastRequest):
         raise HTTPException(status_code=503, detail="Core services not available")
     
     try:
+        # Classify query intent and get retrieval strategy
+        strategy = intent_classifier.classify_and_get_strategy(request.query)
+        logger.info(f"Query intent classified: {strategy['description']} - retrieving {strategy['num_documents']} documents")
+        
         # Generate query embedding
         query_embedding = embed_provider.get_embeddings([request.query])[0]
         
-        # Retrieve ~100 documents
+        # Retrieve documents using intent-based strategy
         similar_docs = pg_storage.find_similar_documents(
             query_embedding=query_embedding,
-            top_k=100,
+            top_k=strategy['num_documents'],  # Dynamic document count based on intent
             metric="cosine"
         )
         
