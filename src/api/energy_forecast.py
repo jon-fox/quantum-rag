@@ -79,9 +79,15 @@ async def generate_energy_forecast(request: ForecastRequest):
                     metadata=metadata
                 ))
 
-        logger.info("Printing retrieved documents for debugging:")
+        logger.info("Printing retrieved documents for debugging (full documents):")
         for doc in documents:
-            logger.debug(f"Document: {doc}")  # Log first 100 chars
+            logger.debug(
+                "Document ID: %s\nContent: %s\nSource: %s\nMetadata: %s",
+                doc.id,
+                doc.content,
+                doc.source,
+                doc.metadata
+            )
         
         # Rerank and get top 5
         reranked_results = classical_reranker.rerank(request.query, documents, top_k=5)
