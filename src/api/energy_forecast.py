@@ -14,6 +14,7 @@ from src.prompts.builders import build_energy_forecast_prompt
 from src.query_intent import QueryIntentClassifier
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)  # enable debug logging for this module
 
 # Request/Response schemas
 class ForecastRequest(BaseModel):
