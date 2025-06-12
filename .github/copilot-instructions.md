@@ -10,9 +10,11 @@
 
 - Follow existing conventions (formatting, naming, patterns).
 - Favor simplicity and readability over cleverness.
-- Include concise comments when adding or modifying logic.
+- **Comment sparingly**: Only add comments where necessary to clarify non-obvious logic.
 
 ## Communication
 
 - When in doubt, propose options instead of committing uncertain changes.
 - Provide brief rationale for any suggestions or code snippets.
+- **No terminal commands**: Do not suggest executing commands in the terminal.
+- **Be concise**: Keep explanations and summaries brief and to the point.
