@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import logging
+import os  # for LOG_LEVEL
 
 from src.api.energy_query_api import router as energy_router
 from src.api.embedding_api import create_embedding_router # Import the function
@@ -14,8 +15,11 @@ from src.api.energy_forecast import router as forecast_router
 from src.config.env_manager import load_environment
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
+numeric_level = getattr(logging, log_level, logging.INFO)
+logging.basicConfig(level=numeric_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+logger.info(f"Log level set to {log_level}")
 
 # Load environment variables at startup
 load_environment()

@@ -24,9 +24,9 @@ if [ ! -z "$PID" ]; then
     echo "Previous API process stopped"
 fi
 
-# Start the API the simple way
-echo "Starting API..."
-python3 app.py > api_logs.log 2>&1 &
+# Start the API with configurable log level
+echo "Starting API with LOG_LEVEL=${LOG_LEVEL:-DEBUG}..."
+LOG_LEVEL=${LOG_LEVEL:-DEBUG} python3 app.py > api_logs.log 2>&1 &
 
 # Store the new PID
 NEW_PID=$!
