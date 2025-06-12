@@ -77,10 +77,27 @@ async def generate_energy_forecast(request: ForecastRequest):
                     source=metadata.get("source", "PostgreSQL"),
                     metadata=metadata
                 ))
+
+        logger.info("Printing retrieved documents for debugging:")
+        for doc in documents:
+            logger.debug(f"Document: {doc}")  # Log first 100 chars
         
         # Rerank and get top 5
         reranked_results = classical_reranker.rerank(request.query, documents, top_k=5)
         
+        debug_results = []
+        for item in reranked_results:
+            if isinstance(item, tuple) and len(item) == 2:
+                doc, score = item
+            else:
+                doc = item
+            debug_results.append(doc)
+
+        logger.info("Reranked results documents for debugging (full docs):")
+        for doc in debug_results:
+            logger.debug("Document ID: %s\nContent: %s\nSource: %s\nMetadata: %s",
+                        doc.id, doc.content, doc.source, doc.metadata)
+
         # Build prompt using the template
         prompt = build_energy_forecast_prompt(request.query, reranked_results)
         
