@@ -187,7 +187,9 @@ class QueryIntentClassifier:
             
         # Add common filters
         filters['date_info'] = date_patterns
-        filters['keywords'] = generation_types + metrics
+        # Apply keyword filter immediately except for time_comparative to avoid starving months
+        if intent != 'time_comparative':
+            filters['keywords'] = generation_types + metrics
         
         return filters
     

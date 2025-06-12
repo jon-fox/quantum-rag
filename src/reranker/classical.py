@@ -63,6 +63,22 @@ class ClassicalReranker:
     
     def _initialize_model(self):
         """Initialize the Cross-Encoder model with fallback handling."""
+        # Prepare local cache directory for models
+        cache_root = self.config.get("model_cache_dir", "cross_encoder")
+        os.makedirs(cache_root, exist_ok=True)
+        model_dir_name = self.model_name.replace("/", "_")
+        local_model_dir = os.path.join(cache_root, model_dir_name)
+        
+        # Attempt to load from local cache
+        if os.path.isdir(local_model_dir):
+            try:
+                self.model = CrossEncoder(local_model_dir, device=self.device)
+                self.model_loaded = True
+                logger.info(f"Loaded Cross-Encoder model from local cache: {local_model_dir}")
+                return
+            except Exception as e:
+                logger.warning(f"Failed to load local model from {local_model_dir}: {e}. Proceeding to download.")
+        
         try:
             # Check for common HuggingFace token environment variable names
             hf_token = os.getenv('HUGGINGFACE_HUB_TOKEN') or os.getenv('HUGGINGFACE_API_TOKEN') or os.getenv('HF_TOKEN')
@@ -74,7 +90,14 @@ class ClassicalReranker:
             else:
                 logger.warning("No Hugging Face token found in environment variables")
                 
+            # Download and initialize model
             self.model = CrossEncoder(self.model_name, device=self.device)
+            # Save to local cache for future reuse
+            try:
+                self.model.save(local_model_dir)
+                logger.info(f"Saved Cross-Encoder model to local cache: {local_model_dir}")
+            except Exception as e:
+                logger.warning(f"Failed to save model to local cache: {e}")
             self.model_loaded = True
             logger.info(f"Successfully loaded Cross-Encoder model '{self.model_name}' on device '{self.device}'")
         except Exception as e:

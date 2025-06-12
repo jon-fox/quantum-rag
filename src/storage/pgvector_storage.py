@@ -258,7 +258,7 @@ class PgVectorStorage:
                     if date_info.get('months'):
                         month_conditions = []
                         for month in date_info['months']:
-                            month_conditions.append("EXTRACT(MONTH FROM updated_at) = %s")
+                            month_conditions.append("EXTRACT(MONTH FROM (split_part(vector_id, '_', 2))::date) = %s")
                             month_num = {
                                 'january': 1, 'february': 2, 'march': 3, 'april': 4,
                                 'may': 5, 'june': 6, 'july': 7, 'august': 8,
@@ -272,7 +272,7 @@ class PgVectorStorage:
                     if date_info.get('years'):
                         year_conditions = []
                         for year in date_info['years']:
-                            year_conditions.append("EXTRACT(YEAR FROM updated_at) = %s")
+                            year_conditions.append("EXTRACT(YEAR FROM (split_part(vector_id, '_', 2))::date) = %s")
                             query_params.append(int(year))
                         if year_conditions:
                             where_conditions.append(f"({' OR '.join(year_conditions)})")

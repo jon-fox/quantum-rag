@@ -43,6 +43,9 @@ credentials.txt
 *.log
 nohup.out
 
+# models
+cross_encoder/*
+
 # Compiled Python modules
 *.so
 *.pyd
