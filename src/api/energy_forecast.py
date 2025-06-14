@@ -10,7 +10,7 @@ import logging
 from src.storage.pgvector_storage import PgVectorStorage
 from src.reranker.classical import ClassicalReranker, Document
 from src.embeddings.embed_utils import get_embedding_provider
-from src.prompts.builders import build_energy_forecast_prompt
+from src.prompts.builders import build_prompt
 from src.query_intent import QueryIntentClassifier
 
 logger = logging.getLogger(__name__)
@@ -106,7 +106,8 @@ async def generate_energy_forecast(request: ForecastRequest):
                         doc.id, doc.content, doc.source, doc.metadata)
 
         # Build prompt using the template
-        prompt = build_energy_forecast_prompt(request.query, reranked_results)
+        # Generate intent-specific prompt
+        prompt = build_prompt(strategy['focus'], request.query, reranked_results)
         
         # Call OpenAI API
         response = client.chat.completions.create(

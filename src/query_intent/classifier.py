@@ -119,6 +119,7 @@ class QueryIntentClassifier:
         unique_months = {m.lower() for m in months}
         if len(unique_months) >= 2:
             strategy = self.retrieval_strategies['time_comparative'].copy()
+            strategy['intent'] = 'time_comparative'
             strategy['query_filters'] = self._extract_query_filters(query, 'time_comparative')
             logger.info("Query classified as time_comparative")
             return strategy
@@ -128,12 +129,14 @@ class QueryIntentClassifier:
             for pat in patterns:
                 if re.search(pat, q):
                     strategy = self.retrieval_strategies[intent].copy()
+                    strategy['intent'] = intent
                     strategy['query_filters'] = self._extract_query_filters(query, intent)
                     logger.info(f"Query classified as {intent}")
                     return strategy
         
         # Fallback
         strategy = self.retrieval_strategies['general'].copy()
+        strategy['intent'] = 'general'
         strategy['query_filters'] = self._extract_query_filters(query, 'general')
         logger.info("Query classified as general")
         return strategy
