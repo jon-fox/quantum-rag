@@ -7,7 +7,7 @@ Top 5 Relevant Data Points:
 {relevant_data}
 
 Instructions:
-- Ensure each period’s data is clearly separated.
+- Ensure each period's data is clearly separated.
 - Highlight key differences across periods.
 - Reference specific dates, values, and context.
 
