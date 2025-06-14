@@ -1,6 +1,3 @@
-"""
-Prompt template for trend analysis.
-"""
 TREND_ANALYSIS_PROMPT = """
 You are an energy data analyst focusing on trend analysis. Given the query and top 5 relevant data points, identify and describe temporal trends in the data.
 

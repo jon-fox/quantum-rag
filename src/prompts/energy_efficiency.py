@@ -1,8 +1,3 @@
-"""
-Prompt templates used for various LLM-based evaluations in the energy data analysis system.
-These templates can be easily modified to improve evaluation quality.
-"""
-
 ENERGY_EFFICIENCY_EVALUATION_PROMPT = """
 You are an energy efficiency expert evaluating whether a given consumption pattern is efficient and worth flagging as a potential optimization target.
 

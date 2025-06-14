@@ -1,7 +1,3 @@
-"""
-Prompt templates for energy forecasting using retrieval and reranking.
-"""
-
 ENERGY_FORECAST_PROMPT = """You are an ERCOT energy analyst. Given the query and top 5 relevant ERCOT daily system reports, write a concise summary analyzing trends in DAM forecasted load vs actual telemetry generation during afternoon peak hours.
 
 Context:

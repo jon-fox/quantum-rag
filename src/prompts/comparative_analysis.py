@@ -1,6 +1,3 @@
-"""
-Prompt template for comparative analysis.
-"""
 COMPARATIVE_ANALYSIS_PROMPT = """
 You are an energy data analyst performing comparative analysis. Given the query and top 5 relevant data points, compare categories or scenarios as requested.
 

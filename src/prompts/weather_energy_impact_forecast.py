@@ -1,7 +1,3 @@
-"""
-Prompt templates for LLM-based weather impact on energy forecasting.
-"""
-
 WEATHER_ENERGY_IMPACT_FORECAST_PROMPT = """
 You are an energy market analyst specializing in the impact of weather on energy consumption and pricing, with a focus on the ERCOT market.
 
