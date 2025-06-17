@@ -2,11 +2,28 @@
 Prompt builders for various energy analysis tasks.
 """
 
+from src.prompts.direct_query import DIRECT_QUERY_PROMPT
 from src.prompts.energy_forecast import ENERGY_FORECAST_PROMPT
 from src.prompts.trend_analysis import TREND_ANALYSIS_PROMPT
 from src.prompts.outlier_detection import OUTLIER_DETECTION_PROMPT
 from src.prompts.comparative_analysis import COMPARATIVE_ANALYSIS_PROMPT
 from src.prompts.time_comparative import TIME_COMPARATIVE_PROMPT
+
+
+def build_direct_query_prompt(query: str, reranked_results: list) -> str:
+    """
+    Build a direct query prompt for specific data point requests.
+    """
+    relevant_data = ""
+    for i, (doc, score) in enumerate(reranked_results[:3], 1):  # Only use top 3 for direct queries
+        preview = doc.content.strip().replace('\n', ' ')
+        # Don't truncate for direct queries - we need the full content
+        relevant_data += f"{i}. {preview}\n"
+    
+    return DIRECT_QUERY_PROMPT.format(
+        query=query,
+        relevant_data=relevant_data
+    )
 
 
 def build_energy_forecast_prompt(query: str, reranked_results: list) -> str:
@@ -84,6 +101,8 @@ def build_prompt(intent: str, query: str, reranked_results: list) -> str:
     """
     Dispatch to the appropriate prompt builder based on intent.
     """
+    if intent == 'direct_query':
+        return build_direct_query_prompt(query, reranked_results)
     if intent == 'forecasting':
         return build_energy_forecast_prompt(query, reranked_results)
     if intent == 'trend_analysis':

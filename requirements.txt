@@ -2,6 +2,7 @@
 atomic-agents
 boto3
 fastapi
+instructor
 numpy
 openai
 pydantic

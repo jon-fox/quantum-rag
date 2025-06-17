@@ -106,15 +106,23 @@ async def generate_energy_forecast(request: ForecastRequest):
                         doc.id, doc.content, doc.source, doc.metadata)
 
         # Build prompt using the template
-        # Generate intent-specific prompt
+        # Generate intent-specific prompt - use the strategy's focus to determine prompt type
         prompt = build_prompt(strategy['focus'], request.query, reranked_results)
+        
+        # For direct queries, use simpler LLM parameters
+        if strategy.get('focus') == 'exact_data_lookup':
+            temperature = 0.0  # More deterministic for direct queries
+            max_tokens = 100   # Shorter responses for direct answers
+        else:
+            temperature = 0.1
+            max_tokens = 500
         
         # Call OpenAI API
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-            max_tokens=500
+            temperature=temperature,
+            max_tokens=max_tokens
         )
         
         forecast_text = response.choices[0].message.content
