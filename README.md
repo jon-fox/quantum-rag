@@ -1,98 +1,71 @@
-# Quantum Semantic Reranking in RAG Pipelines
+# Quantum-Enhanced Energy RAG Pipeline
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+A research project exploring quantum computation in document reranking for energy data analysis using RAG (Retrieval-Augmented Generation) systems.
 
-## Resources
+## Overview
 
-| Resource | Link |
-|----------|------|
-| Qiskit (Quantum SDK) | https://github.com/Qiskit/qiskit |
-| Project Discussion | https://chatgpt.com/c/68254a64-f578-8001-b942-33e437225165 |
-| Original Proposal | https://docs.google.com/document/d/19WuIULxvqFG6xaQ2Sa7sYMlx8o4hZBwX4khceGAqRag/edit?tab=t.0 |
-| Atomic Agents | https://github.com/BrainBlend-AI/atomic-agents |
-| uv (package) manager | https://github.com/astral-sh/uv |
+This project investigates quantum-enhanced reranking within RAG pipelines, specifically for energy forecast analysis. It maintains a classical retrieval pipeline while comparing quantum and classical reranking approaches for document similarity.
 
-## Project Objective
+### Key Features
 
-This graduate independent study project investigates whether a quantum-enhanced reranking component can improve Retrieval-Augmented Generation (RAG) systems. The research maintains a classical RAG pipeline while replacing only the reranking mechanism with a quantum alternative to evaluate its effectiveness for energy forecast analysis using ERCOT data.
-
-The research focuses on:
-- Developing a quantum circuit-based reranker within a primarily classical RAG pipeline
-- Encoding documents and queries into quantum states for similarity comparison
-- Comparing classical vs. quantum reranking approaches with identical retrieval and generation components
-- Building an agent-based controller to intelligently select between classical or quantum reranking based on query characteristics
-- Evaluating end-to-end performance across multiple LLM backends
-- Analyzing real-time ERCOT energy data for market trend predictions
+- **Quantum Reranking**: Quantum circuit-based document similarity comparison using Qiskit
+- **Classical Baseline**: Traditional reranking methods for performance comparison  
+- **Intelligent Controller**: Automatic selection between quantum and classical reranking
+- **Energy Focus**: Specialized for energy data analysis and forecasting
+- **Vector Storage**: PostgreSQL with pgvector for document embeddings
 
 ## API Endpoints
 
-The project provides a focused API for energy data analysis:
+The FastAPI application provides the following endpoints:
 
-- `POST /api/energy/query`: Query ERCOT energy data using either classical, quantum, or automatic reranking selection
-- `GET /api/energy/health`: Simple health check endpoint
+- `POST /energy/query`: Query energy data with classical, quantum, or automatic reranking
+- `POST /energy/forecast/`: Generate energy forecasts
+- `POST /embeddings/create`: Create document embeddings
+- `POST /embeddings/search`: Search documents by similarity
+- `POST /pgvector/find_similar_documents`: Vector similarity search
+- `POST /pgvector/execute_query`: Execute custom vector queries
 
-## ERCOT API Integration
+Access interactive API documentation at `http://localhost:8000/docs` when running.
 
-The project includes integration with the ERCOT (Electric Reliability Council of Texas) API for accessing real-time and historical energy data:
+## Quick Start
 
-- Authentication with automatic token refresh every 55 minutes (tokens expire after 60 minutes)
-- Access to real-time pricing data, historical load data, and forecasts
-- Environment variable management for secure credential storage
-
-### Setup ERCOT API Credentials
-
-1. Copy the `.env.example` file to `.env` in the project root
-2. Add your ERCOT API credentials to the `.env` file:
+1. **Install Dependencies**
+   ```bash
+   pip install -r requirements.txt
    ```
-   ERCOT_API_USERNAME=your-username
-   ERCOT_API_PASSWORD=your-password
+
+2. **Set Environment Variables**
+   Configure your environment variables for database and API access:
+   ```bash
+   # Add to .env file or export
+   POSTGRES_CONNECTION_STRING=your_postgres_url
+   OPENAI_API_KEY=your_openai_key
+   # Add other required credentials
    ```
-3. The application will automatically load these credentials on startup
 
-### Example Usage
+3. **Run the Application**
+   ```bash
+   python app.py
+   # or
+   uvicorn app:app --reload
+   ```
 
-The `examples/ercot_api_example.py` file demonstrates how to use the ERCOT API client and queries module:
+4. **Access API Documentation**
+   Open `http://localhost:8000/docs` for interactive API documentation.
 
-```python
-# Initialize ERCOT queries helper
-queries = ERCOTQueries(client)
+## Architecture
 
-# Get 2-Day Aggregated Generation Summary
-gen_summary = queries.get_aggregated_generation_summary(
-    delivery_date_from="2025-05-17",
-    delivery_date_to="2025-05-18"
-)
+- **Quantum Reranking** (`src/reranker/quantum.py`): Quantum circuit-based similarity computation
+- **Classical Reranking** (`src/reranker/classical.py`): Traditional reranking methods
+- **Controller** (`src/reranker/controller.py`): Intelligent selection between approaches
+- **Vector Storage** (`src/storage/pgvector_storage.py`): PostgreSQL with pgvector extension
+- **Embeddings** (`src/embeddings/`): Document and query embedding utilities
 
-# Get 2-Day Aggregated Load Summary for Houston region
-load_houston = queries.get_aggregated_load_summary(
-    delivery_date_from="2025-05-17",
-    delivery_date_to="2025-05-18",
-    region="Houston"
-)
+## Dependencies
 
-# Get 2-Day Aggregated Ancillary Service Offers
-ancillary = queries.get_ancillary_service_offers(
-    service_type="REGUP",
-    delivery_date_from="2025-05-17",
-    delivery_date_to="2025-05-18"
-)
-```
-
-## Getting Started
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/quantum-rag.git
-cd quantum-rag
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the API server
-uvicorn app:app --reload
-
-# Access API documentation
-# Open http://localhost:8000/docs in your browser
-```
-
-This work explores the targeted application of quantum computation to a specific NLP pipeline component, with potential applications in energy system forecasting and operational analysis.
+Key dependencies include:
+- **Qiskit**: Quantum computing framework
+- **FastAPI**: Web framework for APIs
+- **PostgreSQL + pgvector**: Vector database for embeddings
+- **Transformers**: Neural language models
+- **Atomic Agents**: Agent framework components
