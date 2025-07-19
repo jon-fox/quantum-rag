@@ -1,5 +1,5 @@
 """
-Agent controller for deciding when to use quantum vs. classical reranking in the energy forecasting RAG pipeline.
+Agent controller for deciding when to use quantum vs. classical reranking for podcast ad detection.
 """
 from typing import Dict, Any, List
 import numpy as np
@@ -18,8 +18,8 @@ class RerankerController:
         
         # Keywords that might benefit from quantum reranking
         self.quantum_keywords = [
-            "forecast", "mismatch", "error", "optimization", "prediction", 
-            "anomaly", "accuracy", "pattern", "correlation", "risk"
+            "advertisement", "ad", "sponsor", "commercial", "promotion", 
+            "product", "brand", "discount", "offer", "deal"
         ]
         
         # Complexity threshold - queries with word count above this might 
@@ -49,7 +49,7 @@ class RerankerController:
         else:
             return "classical"
     
-    def rerank(self, query: str, documents: List[Document], top_k: int = None) -> Dict[str, Any]:
+    def rerank(self, query: str, documents: List[Document], top_k: int = None, reranker_type: str = "auto") -> Dict[str, Any]:
         """
         Rerank documents using the selected reranker.
         
@@ -57,13 +57,17 @@ class RerankerController:
             query: The query string
             documents: List of documents to rerank
             top_k: Number of top documents to return
+            reranker_type: "quantum", "classical", or "auto" for automatic selection
             
         Returns:
             Dictionary with reranked documents and metadata
         """
-        reranker_type = self.select_reranker(query)
+        if reranker_type == "auto":
+            selected_reranker = self.select_reranker(query)
+        else:
+            selected_reranker = reranker_type
         
-        if reranker_type == "quantum":
+        if selected_reranker == "quantum":
             reranked_docs = self.quantum_reranker.rerank(query, documents, top_k)
             used_reranker = "quantum"
         else:

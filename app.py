@@ -3,58 +3,85 @@ FastAPI application for quantum-enhanced reranking in RAG pipelines
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional
 import uvicorn
 import logging
-import os  # for LOG_LEVEL
 
-from src.api.energy_query_api import router as energy_router
-from src.api.embedding_api import create_embedding_router # Import the function
-from src.api.pgvector_query_api import router as pgvector_api_router 
-from src.api.energy_forecast import router as forecast_router 
-
-from src.config.env_manager import load_environment
+from src.reranker.controller import RerankerController
+from src.reranker.classical import Document
 
 # Configure logging
-log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
-numeric_level = getattr(logging, log_level, logging.INFO)
-logging.basicConfig(level=numeric_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-logger.info(f"Log level set to {log_level}")
 
-# Load environment variables at startup
-load_environment()
+# Pydantic models for API
+class DocumentRequest(BaseModel):
+    id: str
+    content: str
+    source: Optional[str] = None
+
+class RerankRequest(BaseModel):
+    query: str
+    documents: List[DocumentRequest]
+    reranker_type: Optional[str] = "auto"  # "quantum", "classical", or "auto"
+    top_k: Optional[int] = 5
 
 # Create FastAPI app
 app = FastAPI(
-    title="Quantum-Enhanced Energy RAG Pipeline",
-    description="API for quantum-enhanced reranking of energy data in RAG pipelines",
+    title="Quantum RAG Reranker",
+    description="API for quantum-enhanced reranking of documents for podcast ad detection",
     version="0.1.0",
 )
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(energy_router, prefix="/energy", tags=["Energy Queries"])
-app.include_router(create_embedding_router(), prefix="/embeddings", tags=["Embedding Operations"]) # Call the function here
-app.include_router(pgvector_api_router, prefix="/pgvector", tags=["PgVector Operations"]) 
-app.include_router(forecast_router, prefix="/energy/forecast", tags=["Energy Forecasting"]) 
+# Initialize reranker controller
+reranker_controller = RerankerController()
 
+@app.post("/rerank")
+async def rerank_documents(request: RerankRequest):
+    """Rerank documents based on query relevance using quantum or classical methods."""
+    try:
+        # Convert request documents to Document objects
+        documents = [
+            Document(doc.id, doc.content, doc.source) 
+            for doc in request.documents
+        ]
+        
+        # Perform reranking
+        result = reranker_controller.rerank(
+            query=request.query,
+            documents=documents,
+            top_k=request.top_k,
+            reranker_type=request.reranker_type
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error during reranking: {e}")
+        return {"error": str(e)}
 
 # Add a simple root endpoint
 @app.get("/")
 async def root():
     """Root endpoint that provides basic information about the API."""
     return {
-        "message": "Quantum-Enhanced Energy RAG Pipeline API",
+        "message": "Quantum RAG Reranker API",
         "docs_url": "/docs",
         "version": "0.1.0",
+        "use_case": "Podcast advertisement detection",
+        "endpoints": {
+            "rerank": "POST /rerank - Rerank documents using quantum or classical methods"
+        }
     }
 
 if __name__ == "__main__":
