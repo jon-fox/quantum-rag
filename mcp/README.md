@@ -7,7 +7,7 @@ This directory contains an stdio Model Context Protocol (MCP) server implementat
 The MCP server provides:
 - Query intent classification
 - RAG (Retrieval-Augmented Generation) operations
-- Energy data analysis capabilities
+- Podcast analysis capabilities
 
 ## Architecture
 
