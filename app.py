@@ -1,6 +1,7 @@
 """
 FastAPI application for quantum-enhanced reranking in RAG pipelines
 """
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -12,8 +13,11 @@ from src.reranker.controller import RerankerController
 from src.reranker.classical import Document
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
+
 
 # Pydantic models for API
 class DocumentRequest(BaseModel):
@@ -21,11 +25,13 @@ class DocumentRequest(BaseModel):
     content: str
     source: Optional[str] = None
 
+
 class RerankRequest(BaseModel):
     query: str
     documents: List[DocumentRequest]
     reranker_type: Optional[str] = "auto"  # "quantum", "classical", or "auto"
     top_k: Optional[int] = 5
+
 
 # Create FastAPI app
 app = FastAPI(
@@ -46,29 +52,30 @@ app.add_middleware(
 # Initialize reranker controller
 reranker_controller = RerankerController()
 
+
 @app.post("/rerank")
 async def rerank_documents(request: RerankRequest):
     """Rerank documents based on query relevance using quantum or classical methods."""
     try:
         # Convert request documents to Document objects
         documents = [
-            Document(doc.id, doc.content, doc.source) 
-            for doc in request.documents
+            Document(doc.id, doc.content, doc.source) for doc in request.documents
         ]
-        
+
         # Perform reranking
         result = reranker_controller.rerank(
             query=request.query,
             documents=documents,
             top_k=request.top_k,
-            reranker_type=request.reranker_type
+            reranker_type=request.reranker_type,
         )
-        
+
         return result
-        
+
     except Exception as e:
         logger.error(f"Error during reranking: {e}")
         return {"error": str(e)}
+
 
 # Add a simple root endpoint
 @app.get("/")
@@ -81,8 +88,9 @@ async def root():
         "use_case": "Podcast advertisement detection",
         "endpoints": {
             "rerank": "POST /rerank - Rerank documents using quantum or classical methods"
-        }
+        },
     }
+
 
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
