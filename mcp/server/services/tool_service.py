@@ -48,7 +48,6 @@ class ToolService:
         # Convert input dictionary to the tool's input model
         input_model = tool.input_model(**input_data)
 
-        # Execute the tool with validated input
         return await tool.execute(input_model)
 
     def _process_tool_content(self, content: ToolContent) -> Any:
@@ -82,25 +81,21 @@ class ToolService:
         if not response.content:
             return {}
 
-        # If there's only one content item, return it directly
         if len(response.content) == 1:
             return self._process_tool_content(response.content[0])
 
-        # If there are multiple content items, return them as a list
         return [self._process_tool_content(content) for content in response.content]
 
     def register_mcp_handlers(self, mcp: FastMCP) -> None:
         """Register all tools as MCP handlers."""
         for tool in self._tools.values():
-            # Get the tool's schema
             schema = tool.input_model.model_json_schema()
             properties = schema.get("properties", {})
 
-            # Create a function signature that matches the schema with parameter descriptions
             params = []
 
             for name, info in properties.items():
-                type_hint = "str"  # Default to str
+                type_hint = "str"
                 if info.get("type") == "integer":
                     type_hint = "int"
                 elif info.get("type") == "number":
@@ -111,7 +106,6 @@ class ToolService:
                 default = info.get("default", "...")
                 description = info.get("description", "")
 
-                # Create parameter string for function definition with Field for descriptions
                 if default == "...":
                     params.append(
                         f"{name}: {type_hint} = Field(description='{description}')"
@@ -121,16 +115,13 @@ class ToolService:
                         f"{name}: {type_hint} = Field(description='{description}', default={repr(default)})"
                     )
 
-            # Create the function definition
             fn_def = f"async def {tool.name}({', '.join(params)}):\n"
             fn_def += f'    """{tool.description}"""\n'
             fn_def += "    result = await self.execute_tool(tool.name, locals())\n"
             fn_def += "    return self._serialize_response(result)"
 
-            # Create the function
             namespace = {"self": self, "tool": tool, "Field": Field}
             exec(fn_def, namespace)
             handler = namespace[tool.name]
 
-            # Register the handler
             mcp.tool(name=tool.name, description=tool.description)(handler)

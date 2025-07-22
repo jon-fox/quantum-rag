@@ -75,7 +75,6 @@ class ReadFromS3Tool(Tool):
             A response containing the transcript data
         """
         try:
-            # Get bucket name from Parameter Store
             ssm_client = boto3.client("ssm")
             parameter_response = ssm_client.get_parameter(
                 Name="/app/app_storage_bucket"
@@ -86,10 +85,8 @@ class ReadFromS3Tool(Tool):
             transcripts = []
             available_shows = set()
 
-            # List all objects in the bucket
             paginator = s3_client.get_paginator("list_objects_v2")
             
-            # If show name is provided, use it as a prefix to filter results
             paginate_kwargs = {"Bucket": bucket_name}
             if input_data.show_name:
                 paginate_kwargs["Prefix"] = f"{input_data.show_name}/"
@@ -101,25 +98,20 @@ class ReadFromS3Tool(Tool):
                 for obj in page["Contents"]:
                     key = obj["Key"]
 
-                    # Check if it's a transcript JSON file
                     if key.endswith(".json") and "transcript" in key:
-                        # Parse the path structure: show/episode_id/transcript_file.json
                         path_parts = key.split("/")
                         if len(path_parts) >= 3:
                             show_name = path_parts[0]
                             episode_id = path_parts[1]
                             
-                            # Add show name to available shows set
                             available_shows.add(show_name)
 
-                            # Read the JSON file
                             response = s3_client.get_object(
                                 Bucket=bucket_name, Key=key
                             )
                             content = response["Body"].read().decode("utf-8")
                             transcript_data = json.loads(content)
 
-                            # Add metadata to the transcript
                             transcript_entry = {
                                 "show_name": show_name,
                                 "episode_id": episode_id,

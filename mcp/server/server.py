@@ -39,7 +39,6 @@ def create_http_app():
     # See: https://github.com/modelcontextprotocol/python-sdk/issues/732
     app = mcp_server.streamable_http_app()  # type: ignore[attr-defined]
 
-    # Apply CORS middleware manually
     app = CORSMiddleware(
         app,
         allow_origins=["*"],

@@ -96,24 +96,18 @@ class StoreInFaissTool(Tool):
                 )
                 return ToolResponse.from_model(output)
 
-            # Convert embeddings to numpy array
             embeddings_array = np.array(input_data.embeddings, dtype=np.float32)
             dimension = input_data.dimension or embeddings_array.shape[1]
 
-            # Load existing index or create new one
             if os.path.exists(input_data.index_path):
                 index = faiss.read_index(input_data.index_path)
             else:
-                # Create new FAISS index (using IndexFlatL2 for simplicity)
                 index = faiss.IndexFlatL2(dimension)
 
-            # Add embeddings to index
             index.add(embeddings_array)
 
-            # Save the updated index
             faiss.write_index(index, input_data.index_path)
 
-            # Save metadata if provided
             if input_data.metadata:
                 metadata_path = input_data.index_path.replace(".faiss", "_metadata.pkl")
                 existing_metadata = []

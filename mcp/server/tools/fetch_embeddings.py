@@ -79,7 +79,6 @@ class FetchEmbeddingsTool(Tool):
             A response containing the embeddings
         """
         try:
-            # Get OpenAI API key from Parameter Store
             ssm_client = boto3.client("ssm")
             parameter_response = ssm_client.get_parameter(
                 Name="/openai/api_key",
@@ -87,15 +86,12 @@ class FetchEmbeddingsTool(Tool):
             )
             api_key = parameter_response["Parameter"]["Value"]
 
-            # Initialize OpenAI client
             client = openai.OpenAI(api_key=api_key)
 
-            # Fetch embeddings
             response = client.embeddings.create(
                 model=input_data.model, input=input_data.texts
             )
 
-            # Extract embeddings from response
             embeddings = [embedding.embedding for embedding in response.data]
 
             output = FetchEmbeddingsOutput(embeddings=embeddings, error=None)
