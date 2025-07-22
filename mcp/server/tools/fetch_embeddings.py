@@ -1,12 +1,12 @@
 """Tool for fetching embeddings using OpenAI."""
 
 from typing import Dict, Any, Union, List
-import os
+import boto3
 import openai
 
 from pydantic import Field, BaseModel, ConfigDict
 
-from ..interfaces.tool import Tool, BaseToolInput, ToolResponse
+from server.interfaces.tool import Tool, BaseToolInput, ToolResponse
 
 
 class FetchEmbeddingsInput(BaseToolInput):
@@ -53,7 +53,10 @@ class FetchEmbeddingsTool(Tool):
     """Tool that fetches embeddings from OpenAI for given texts."""
 
     name = "FetchEmbeddings"
-    description = "Fetches embeddings from OpenAI for a list of input texts"
+    description = (
+        "Fetches embeddings from OpenAI for a list of input texts. "
+        "The OpenAI API key is retrieved from Parameter Store at /openai/api_key."
+    )
     input_model = FetchEmbeddingsInput
     output_model = FetchEmbeddingsOutput
 
@@ -76,13 +79,13 @@ class FetchEmbeddingsTool(Tool):
             A response containing the embeddings
         """
         try:
-            # Get OpenAI API key from environment variable
-            api_key = os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                output = FetchEmbeddingsOutput(
-                    embeddings=[], error="OPENAI_API_KEY environment variable not set"
-                )
-                return ToolResponse.from_model(output)
+            # Get OpenAI API key from Parameter Store
+            ssm_client = boto3.client("ssm")
+            parameter_response = ssm_client.get_parameter(
+                Name="/openai/api_key",
+                WithDecryption=True
+            )
+            api_key = parameter_response["Parameter"]["Value"]
 
             # Initialize OpenAI client
             client = openai.OpenAI(api_key=api_key)

@@ -8,7 +8,7 @@ import pickle
 
 from pydantic import Field, BaseModel, ConfigDict
 
-from ..interfaces.tool import Tool, BaseToolInput, ToolResponse
+from server.interfaces.tool import Tool, BaseToolInput, ToolResponse
 
 
 class StoreInFaissInput(BaseToolInput):
