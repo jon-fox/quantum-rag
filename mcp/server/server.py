@@ -10,7 +10,7 @@ from fastmcp import FastMCP
 
 from server.services.tool_service import ToolService
 from server.interfaces.tool import Tool
-from server.tools import FetchEmbeddingsTool, ReadFromS3Tool, StoreInFaissTool
+from server.tools import FetchEmbeddingsTool, ReadFromS3Tool, StoreInFaissTool, ProcessTranscriptsToEmbeddingsTool
 
 
 def create_mcp_server() -> FastMCP:
@@ -23,6 +23,7 @@ def create_mcp_server() -> FastMCP:
             FetchEmbeddingsTool(),
             ReadFromS3Tool(),
             StoreInFaissTool(),
+            ProcessTranscriptsToEmbeddingsTool(),
         ]
     )
     tool_service.register_mcp_handlers(mcp)

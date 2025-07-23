@@ -116,7 +116,8 @@ class ReadFromS3Tool(Tool):
                             available_shows.add(path_parts[0])
 
             shows_list = sorted(list(available_shows))
-            logger.info(f"Found {len(shows_list)} available shows: {shows_list}")
+            logger.info(f"Found {len(shows_list)} available shows")
+            logger.debug(f"Available shows: {shows_list[:10]}{'...' if len(shows_list) > 10 else ''}")
             
             # If a specific show was requested, check if it exists
             if input_data.show_name:

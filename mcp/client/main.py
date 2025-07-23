@@ -100,30 +100,36 @@ def main():
                 background=[
                     "You are an MCP Orchestrator Agent, designed to chat with users and",
                     "determine the best way to handle their queries using the available tools.",
+                    "You have access to individual tools (ReadFromS3, FetchEmbeddings, StoreInFaiss) and",
+                    "a comprehensive ProcessTranscriptsToEmbeddings tool that handles the complete workflow:",
+                    "S3 transcript retrieval → embedding generation → FAISS index creation in one operation."
                 ],
                 steps=[
-                    "1. Use the reasoning field to determine if one or more successive tool calls could be used to handle the user's query.",
-                    "2. If so, choose the appropriate tool(s) one at a time and extract all necessary parameters from the query.",
-                    "3. If a tool returns an error with available alternatives (like available_shows), automatically retry with the closest matching option.",
-                    "4. If a single tool can not be used to handle the user's query, think about how to break down the query into "
-                    "smaller tasks and route them to the appropriate tool(s).",
-                    "5. If no sequence of tools could be used, or if you are finished processing the user's query, provide a final "
-                    "response to the user.",
+                    "1. Use the reasoning field to determine if one or more tool calls could be used to handle the user's query.",
+                    "2. For complete workflows (getting transcripts + embeddings + FAISS storage), ALWAYS use ProcessTranscriptsToEmbeddings tool.",
+                    "3. For individual operations, use specific tools: ReadFromS3, FetchEmbeddings, or StoreInFaiss.",
+                    "4. If a tool fails, analyze the error and suggest alternatives or fixes to the user.",
+                    "5. If a tool returns an error with available alternatives (like available_shows), automatically retry with the closest matching option.",
+                    "6. If no tool can handle the query, provide a clear explanation and suggestions.",
+                    "7. When finished processing, provide a final response to the user."
                 ],
                 output_instructions=[
                     "1. Always provide a detailed explanation of your decision-making process in the 'reasoning' field.",
                     "2. Choose exactly one action schema (either a tool input or FinalResponseSchema).",
                     "3. Ensure all required parameters for the chosen tool are properly extracted and validated.",
-                    "4. When a tool returns an error with available alternatives, automatically retry with the closest matching option before giving up.",
-                    "5. Look for similar names in available_shows when exact matches fail (e.g., 'The Tim Dillon Show' vs 'The_Tim_Dillon_Show').",
-                    "6. Maintain a professional and helpful tone in all responses.",
-                    "7. Break down complex queries into sequential tool calls before giving the final answer via `FinalResponseSchema`.",
+                    "4. IMPORTANT: When users request complete workflows like 'get transcript, create embeddings, store in FAISS' - use ProcessTranscriptsToEmbeddings tool.",
+                    "5. For single-step operations, use individual tools (ReadFromS3, FetchEmbeddings, StoreInFaiss).",
+                    "6. When tools fail, acknowledge the error and provide helpful suggestions or alternatives.",
+                    "7. Look for similar names in available_shows when exact matches fail (e.g., 'The Tim Dillon Show' vs 'The_Tim_Dillon_Show').",
+                    "8. Maintain a professional and helpful tone in all responses.",
+                    "9. Provide clear final responses when the task is complete or cannot be completed."
                 ],
             ),
         )
     )
 
     console.print("[bold green]HTTP Stream client ready. Type 'exit' to quit.[/bold green]")
+    
     while True:
         query = console.input("[bold yellow]You:[/bold yellow] ").strip()
         if query.lower() in {"exit", "quit"}:
@@ -137,7 +143,7 @@ def main():
 
             # Debug output to see what's actually in the output
             console.print(
-                f"[dim]Debug - orchestrator_output type: {type(orchestrator_output)}, fields: {orchestrator_output.model_dump()}"
+                f"[dim]Debug - orchestrator_output type: {type(orchestrator_output)}, reasoning: {getattr(orchestrator_output, 'reasoning', 'N/A')[:100]}..."
             )
 
             # Handle the output similar to SSE version
@@ -169,23 +175,60 @@ def main():
 
                 # Execute the tool
                 console.print(f"[blue]Executing {tool_class.mcp_tool_name}...[/blue]")
-                console.print(f"[dim]Parameters: {action_instance.model_dump()}")
+                # Only show key parameters, not potentially large data
+                params_display = {k: v for k, v in action_instance.model_dump().items() 
+                                if k not in ['texts', 'embeddings', 'data', 'content'] and not isinstance(v, (list, dict)) or k in ['show_name', 'index_path', 'model']}
+                if len(params_display) != len(action_instance.model_dump()):
+                    params_display['...'] = 'additional parameters omitted'
+                console.print(f"[dim]Parameters: {params_display}")
+                
                 tool_instance = tool_class()
                 try:
                     result = tool_instance.run(action_instance)
-                    # Don't log full result content for transcript tools to avoid verbose output
-                    if tool_class.mcp_tool_name == "ReadFromS3":
-                        console.print(f"[bold green]Result:[/bold green] Retrieved transcript data successfully")
+                    
+                    # Check if the tool result indicates an error
+                    if hasattr(result, 'result'):
+                        result_data = result.result
+                        
+                        # Handle structured error responses (e.g., from ProcessTranscriptsToEmbeddings)
+                        if hasattr(result_data, 'success') and not result_data.success:
+                            error_msg = getattr(result_data, 'error', 'Unknown error occurred')
+                            available_shows = getattr(result_data, 'available_shows', None)
+                            
+                            console.print(f"[red]Tool Error:[/red] {error_msg}")
+                            if available_shows:
+                                console.print(f"[yellow]Available shows:[/yellow] {', '.join(available_shows)}")
+                            
+                            # Ask agent to handle the error or provide alternatives
+                            error_context = f"The {tool_class.mcp_tool_name} tool failed with error: {error_msg}"
+                            if available_shows:
+                                error_context += f" Available shows are: {', '.join(available_shows)}"
+                            error_context += f". Please provide alternative suggestions or retry with a similar show name for: {query}"
+                            
+                            error_query = error_context
+                            next_output = orchestrator_agent.run(MCPOrchestratorInputSchema(query=error_query))
+                            
+                            if hasattr(next_output, "action"):
+                                action_instance = next_output.action
+                                if hasattr(next_output, "reasoning"):
+                                    console.print(f"[cyan]Orchestrator reasoning:[/cyan] {next_output.reasoning}")
+                            else:
+                                action_instance = FinalResponseSchema(response_text=next_output.chat_message)
+                            continue
+                    
+                    # Display successful result
+                    if tool_class.mcp_tool_name in ["ReadFromS3", "FetchEmbeddings", "StoreInFaiss", "ProcessTranscriptsToEmbeddings"]:
+                        console.print(f"[bold green]Result:[/bold green] {tool_class.mcp_tool_name} completed successfully")
                     else:
                         console.print(f"[bold green]Result:[/bold green] {result.result}")
 
                     # Ask orchestrator what to do next with the result
-                    next_query = f"Based on the tool result: {result.result}, please provide the final response to the user's original query: {query}"
+                    next_query = f"Based on the tool result: {result.result}, please provide the next step or final response for: {query}"
                     next_output = orchestrator_agent.run(MCPOrchestratorInputSchema(query=next_query))
 
                     # Debug output for subsequent responses
                     console.print(
-                        f"[dim]Debug - subsequent orchestrator_output type: {type(next_output)}, fields: {next_output.model_dump()}"
+                        f"[dim]Debug - subsequent orchestrator_output type: {type(next_output)}, reasoning: {getattr(next_output, 'reasoning', 'N/A')[:100]}..."
                     )
 
                     if hasattr(next_output, "action"):
