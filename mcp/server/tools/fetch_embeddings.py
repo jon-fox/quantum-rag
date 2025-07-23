@@ -79,7 +79,7 @@ class FetchEmbeddingsTool(Tool):
             A response containing the embeddings
         """
         try:
-            ssm_client = boto3.client("ssm")
+            ssm_client = boto3.client("ssm", region_name="us-east-1")
             parameter_response = ssm_client.get_parameter(
                 Name="/openai/api_key",
                 WithDecryption=True

@@ -29,13 +29,13 @@ class StoreInFaissInput(BaseToolInput):
     embeddings: List[List[float]] = Field(
         description="List of embedding vectors to store", examples=[[[0.1, 0.2, 0.3]]]
     )
+    index_path: str = Field(
+        description="Path where the FAISS index will be saved", examples=["index.faiss"]
+    )
     metadata: Optional[List[str]] = Field(
         default=None,
         description="Optional metadata associated with each embedding",
         examples=[["text1", "text2"]],
-    )
-    index_path: str = Field(
-        description="Path where the FAISS index will be saved", examples=["index.faiss"]
     )
     dimension: Optional[int] = Field(
         default=None,
