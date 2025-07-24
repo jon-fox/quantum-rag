@@ -96,26 +96,6 @@ class ProcessTranscriptsToEmbeddingsTool(Tool):
         self.fetch_embeddings_tool = FetchEmbeddingsTool()
         self.store_in_faiss_tool = StoreInFaissTool()
 
-    def _parse_tool_response(self, response: ToolResponse, tool_name: str) -> tuple[bool, Dict[str, Any], Optional[str]]:
-        """Parse ToolResponse and extract data.
-        
-        Returns:
-            (success, data, error_message)
-        """
-        if response.content and len(response.content) > 0:
-            content = response.content[0]
-            if content.type == "json" and content.json_data:
-                data = content.json_data
-                error = data.get('error')
-                if error:
-                    logger.error(f"{tool_name} returned error: {error}")
-                    return False, data, error
-                return True, data, None
-        
-        error_msg = f"Failed to parse response from {tool_name}"
-        logger.error(error_msg)
-        return False, {}, error_msg
-
     def _create_error_output(self, transcripts_count: int = 0, embeddings_count: int = 0, 
                            show_name: str = "", available_shows: Optional[List[str]] = None, 
                            error: str = "") -> ToolResponse:
@@ -136,23 +116,17 @@ class ProcessTranscriptsToEmbeddingsTool(Tool):
         read_input = ReadFromS3Input(show_name=show_name)
         response = await self.read_from_s3_tool.execute(read_input)
         
-        success, data, error = self._parse_tool_response(response, "ReadFromS3Tool")
-        if not success:
-            return [], None
-            
+        # Extract data directly from response
+        data = response.content[0].json_data if response.content and response.content[0].json_data else {}
         transcripts = data.get('transcripts', [])
         available_shows = data.get('available_shows')
+        error = data.get('error')
         
         if error:
             return [], available_shows
             
         if transcripts:
             logger.debug(f"Found {len(transcripts)} transcripts")
-            logger.debug(f"First transcript type: {type(transcripts[0])}")
-            if isinstance(transcripts[0], dict):
-                logger.debug(f"First transcript keys: {list(transcripts[0].keys())}")
-            else:
-                logger.debug(f"First transcript preview: {str(transcripts[0])[:100]}...")
         
         if max_transcripts and len(transcripts) > max_transcripts:
             transcripts = transcripts[:max_transcripts]
@@ -163,48 +137,29 @@ class ProcessTranscriptsToEmbeddingsTool(Tool):
     def _extract_texts(self, transcripts: List[Dict[str, Any]]) -> List[str]:
         """Extract text content from transcript data."""
         texts = []
-        for i, transcript in enumerate(transcripts):
-            try:
-                if not isinstance(transcript, dict):
-                    logger.warning(f"Transcript {i} is not a dictionary, got {type(transcript)}")
-                    continue
-                
-                transcript_data = transcript.get('data', {})
-                
-                if isinstance(transcript_data, dict):
-                    text_content = (
-                        transcript_data.get('text') or 
-                        transcript_data.get('transcript') or 
-                        transcript_data.get('content') or
-                        f"[Non-text data: {type(transcript_data).__name__}]"
-                    )
-                elif isinstance(transcript_data, list):
-                    text_parts = []
-                    for item in transcript_data:
-                        if isinstance(item, str):
-                            text_parts.append(item)
-                        elif isinstance(item, dict):
-                            item_text = (
-                                item.get('text') or 
-                                item.get('transcript') or 
-                                item.get('content') or
-                                item.get('speaker') or
-                                str(item) if len(str(item)) < 200 else f"[Dict: {len(item)} keys]"
-                            )
-                            if isinstance(item_text, str):
-                                text_parts.append(item_text)
-                    text_content = ' '.join(text_parts) if text_parts else f"[List with {len(transcript_data)} items]"
-                elif isinstance(transcript_data, str):
-                    text_content = transcript_data
-                else:
-                    text_content = f"[Unknown data type: {type(transcript_data).__name__}]"
-                
-                if text_content and isinstance(text_content, str) and text_content.strip():
-                    texts.append(text_content)
-                    
-            except Exception as e:
-                logger.warning(f"Failed to extract text from transcript {i}: {e}")
+        for transcript in transcripts:
+            if not isinstance(transcript, dict):
                 continue
+                
+            transcript_data = transcript.get('data', {})
+            text_content = None
+            
+            # Handle common data structures
+            if isinstance(transcript_data, str):
+                text_content = transcript_data
+            elif isinstance(transcript_data, dict):
+                text_content = (
+                    transcript_data.get('text') or 
+                    transcript_data.get('transcript') or 
+                    transcript_data.get('content')
+                )
+            elif isinstance(transcript_data, list):
+                # Join string items, skip non-strings
+                text_parts = [item for item in transcript_data if isinstance(item, str)]
+                text_content = ' '.join(text_parts) if text_parts else None
+            
+            if text_content and text_content.strip():
+                texts.append(text_content)
         
         logger.info(f"Extracted {len(texts)} text chunks from {len(transcripts)} transcripts")
         return texts
@@ -217,11 +172,15 @@ class ProcessTranscriptsToEmbeddingsTool(Tool):
         fetch_input = FetchEmbeddingsInput(texts=texts, model=model)
         response = await self.fetch_embeddings_tool.execute(fetch_input)
         
-        success, data, error = self._parse_tool_response(response, "FetchEmbeddingsTool")
-        if not success or error:
+        # Extract data directly from response
+        data = response.content[0].json_data if response.content and response.content[0].json_data else {}
+        embeddings = data.get('embeddings', [])
+        error = data.get('error')
+        
+        if error:
+            logger.error(f"FetchEmbeddingsTool returned error: {error}")
             return []
             
-        embeddings = data.get('embeddings', [])
         logger.info(f"Generated {len(embeddings)} embeddings using FetchEmbeddingsTool")
         return embeddings
 
@@ -238,9 +197,12 @@ class ProcessTranscriptsToEmbeddingsTool(Tool):
         
         response = await self.store_in_faiss_tool.execute(store_input)
         
-        success, data, error = self._parse_tool_response(response, "StoreInFaissTool")
-        if not success or error:
-            raise ValueError(f"Failed to create FAISS index: {error or 'Unknown error'}")
+        # Extract data directly from response
+        data = response.content[0].json_data if response.content and response.content[0].json_data else {}
+        error = data.get('error')
+        
+        if error:
+            raise ValueError(f"Failed to create FAISS index: {error}")
             
         stored_count = data.get('stored_count', 0)
         index_file_path = f"{index_path}.faiss"
@@ -249,47 +211,34 @@ class ProcessTranscriptsToEmbeddingsTool(Tool):
         logger.info(f"Created FAISS index with {stored_count} vectors using StoreInFaissTool")
         return index_file_path, metadata_file_path
 
-    async def _try_find_similar_show(self, requested_show: str, available_shows: List[str]) -> Optional[str]:
-        """Try to find a similar show name from available shows."""
+    def _find_exact_show_match(self, requested_show: str, available_shows: List[str]) -> Optional[str]:
+        """Find exact match for show name (case-insensitive)."""
         if not available_shows:
             return None
         
         requested_lower = requested_show.lower()
-        
         for show in available_shows:
             if show.lower() == requested_lower:
                 return show
-        
-        requested_words = set(requested_lower.replace('-', ' ').split())
-        
-        best_match = None
-        best_score = 0
-        
-        for show in available_shows:
-            show_words = set(show.lower().replace('-', ' ').split())
-            common_words = requested_words.intersection(show_words)
-            score = len(common_words)
-            
-            if score > best_score and score > 0:
-                best_score = score
-                best_match = show
-        
-        return best_match
+        return None
 
     async def execute(self, input_data: ProcessTranscriptsToEmbeddingsInput) -> ToolResponse:
         """Execute the complete embeddings index creation workflow."""
+        available_shows = None  # Initialize to preserve for error handling
+        
         try:
             logger.info(f"Starting embeddings index creation for show: {input_data.show_name}")
             
             transcripts, available_shows = await self._read_transcripts_from_s3(input_data.show_name, input_data.max_transcripts)
             
             if not transcripts and available_shows:
-                similar_show = await self._try_find_similar_show(input_data.show_name, available_shows)
-                if similar_show and similar_show != input_data.show_name:
-                    logger.info(f"No exact match for '{input_data.show_name}', trying similar show: '{similar_show}'")
-                    transcripts, _ = await self._read_transcripts_from_s3(similar_show, input_data.max_transcripts)
-                    if transcripts:
-                        input_data.show_name = similar_show
+                exact_match = self._find_exact_show_match(input_data.show_name, available_shows)
+                if exact_match and exact_match != input_data.show_name:
+                    logger.info(f"Found exact match with different casing: '{exact_match}'")
+                    retry_transcripts, _ = await self._read_transcripts_from_s3(exact_match, input_data.max_transcripts)
+                    if retry_transcripts:
+                        transcripts = retry_transcripts
+                        input_data.show_name = exact_match
             
             if not transcripts:
                 return self._create_error_output(
@@ -303,6 +252,7 @@ class ProcessTranscriptsToEmbeddingsTool(Tool):
                 return self._create_error_output(
                     transcripts_count=len(transcripts),
                     show_name=input_data.show_name,
+                    available_shows=available_shows,
                     error="No text content found in transcripts"
                 )
             
@@ -311,22 +261,16 @@ class ProcessTranscriptsToEmbeddingsTool(Tool):
                 return self._create_error_output(
                     transcripts_count=len(transcripts),
                     show_name=input_data.show_name,
+                    available_shows=available_shows,
                     error="Failed to generate embeddings"
                 )
             
-            metadata = []
-            for transcript in transcripts:
-                try:
-                    if isinstance(transcript, dict):
-                        show_name = transcript.get('show_name', 'unknown')
-                        episode_id = transcript.get('episode_id', 'unknown')
-                        metadata.append(f"{show_name}/{episode_id}")
-                    else:
-                        logger.warning(f"Transcript is not a dictionary for metadata: {type(transcript)}")
-                        metadata.append("unknown/unknown")
-                except Exception as e:
-                    logger.warning(f"Failed to create metadata for transcript: {e}")
-                    metadata.append("unknown/unknown")
+            # Create metadata for each transcript
+            metadata = [
+                f"{transcript.get('show_name', 'unknown')}/{transcript.get('episode_id', 'unknown')}"
+                for transcript in transcripts
+                if isinstance(transcript, dict)
+            ]
             
             index_file_path, metadata_file_path = await self._create_faiss_index(
                 embeddings, 
@@ -352,5 +296,6 @@ class ProcessTranscriptsToEmbeddingsTool(Tool):
             logger.error(f"Failed to create embeddings index: {e}")
             return self._create_error_output(
                 show_name=input_data.show_name,
+                available_shows=available_shows,
                 error=str(e)
             )
